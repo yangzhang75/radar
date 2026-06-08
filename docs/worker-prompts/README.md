@@ -19,6 +19,11 @@
 | `W-T2.1-ppi-geometry.md` | PPI 极坐标→屏幕几何 | `...uicore.ppi` | shared | `./gradlew :ui-core:test` |
 | `W-T2.3-cpa-tcpa-fusion.md` | CPA/TCPA + 雷达/AIS 融合 | `...uicore.target` | shared | `./gradlew :ui-core:test` |
 
+## 员工复用约定（重要）
+**员工会话是稳定复用的**——干完一个任务的会话会闲置，直接把下一波任务派给它，不要每波开新会话（浪费）。固定 7 人池(observant-aura / rounded-fireplace / thorn-poppyseed / past-freon / vivacious-clover / absorbed-stetson / few-basin)，编排者按**领域匹配**复用：让做过同模块的人接同域新任务，复用其上下文。
+- **续作类任务必须回原会话**：如 `W-T2.2refine-*` 必须给 `absorbed-stetson`(它在 `feat/ui-color` 上续写)。
+- 第二波·免设备的领域匹配建议见本文件末尾派工表的"复用谁"列。
+
 ## 所有员工通用规则（铁律）
 1. **独立 worktree + 分支**：`git worktree add ../wt-<名> -b feat/<名>`，从 commit `3d07258` 起。
 2. **只改你被分配的 package 目录**。绝不碰 `shared/`（接口已冻结，只读引用）、不碰别人的 package、不改根 `build.gradle`/`settings.gradle`（依赖已齐备）。需要改接口？停下，找编排者。
