@@ -28,4 +28,15 @@
 6. 交付时报告：改了哪些文件、测试结果、遇到的阻塞、对接口的任何疑问。
 7. **合规追溯（型式认证强制）**：每个实现标准要求的类/函数，KDoc 注释中标注对应标准条款（如 `// IEC 62388 §6.x` / `// IEC 61162-1 ED6 §8.x` / `// IMO A.823 §x`）。精确实现标准数值，缺具体值时 `TODO(待标准: <标准号 §条款>)` 占位并报告，**不许近似或臆造**。**不要直接改 `docs/合规追溯矩阵.md`**（多人改同一文件会冲突）——把你落实的条款行写进交付报告，由编排者统一并入矩阵。原文 PDF 在 `桌面/雷达开发资料/标准资料/`。
 
-> 第二波（待 Android SDK + 设备决策 §6 #3）：T1.1 Foreground Service、T1.6 同步重连+看门狗、T2.4–T2.9 Android/Compose UI、PPI 渲染面（消费 T2.1 几何 + T2.2 着色）。
+## 第二波 · 免设备（现在可并行派，纯 JVM 可单测，无需 Android SDK）
+| Prompt | 任务 | 独占 package | 备注 |
+|---|---|---|---|
+| `W-T1.4-iec450-transport.md` | 61162-450 传输层 | `comms.iec450` | 出 raw 语句串，喂 T1.5 |
+| `W-T1.1a-handshake-watchdog.md` | HALO 握手+看门狗逻辑 | `comms.halo.handshake` | 连接状态机/看门狗策略(纯逻辑) |
+| `W-T1.6a-sync-core.md` | 多路同步/缓冲/重连逻辑 | `comms.sync` | 适配 VPN 高延迟/丢包 |
+| `W-HALO-target.md` | HALO 目标通道建模+解析 | `comms.halo.target` | docx 无 wire 格式→建模+stub(待真机) |
+| `W-T2.8a-alarm-state-machine.md` | BAM 报警状态机(62923-1) | `comms.alarm` | 认证重点；提 AlarmState 定稿建议 |
+| `W-T2.2refine-62288-colors.md` | 用 62288 精修着色 | `uicore.color`(同分支) | 回炉 absorbed-stetson/feat-ui-color |
+
+> 第三波（待 Android SDK + 设备决策 §6 #3）：T1.1 Foreground Service、T1.6 socket接线、T2.4–T2.9 Android/Compose UI、PPI 渲染面（消费 T2.1 几何 + T2.2 着色）。
+> 编排者待办（不派员工）：用 62923-1 定稿 `contract.AlarmState`（受控接口变更）；持续合规矩阵consolidation。
