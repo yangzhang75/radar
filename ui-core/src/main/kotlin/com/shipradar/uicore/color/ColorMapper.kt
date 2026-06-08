@@ -23,16 +23,17 @@ import com.shipradar.contract.SampleEncoding
  *  - **"if the colour red is used for the radar video image, then it shall be distinguishable from
  *    other uses of the colour red, for example, alarms including dangerous targets"** — the NIGHT
  *    basic colour (red) is therefore a *dark* red, ≥1:2 dimmer than a saturated alert red
- *    (§4.5.1 NOTE 5 defines "visually distinguishable" as ≥1:2 luminance ratio);
+ *    (§4.4.1.1 NOTE 5 defines "visually distinguishable" as ≥1:2 luminance ratio);
  *  - **"additional processed radar information ... may be differentiated ... by tones of other
  *    basic colours"** — this is the clause that authorises the Doppler dual-colour scheme
  *    ([approachingPeak] / [recedingPeak]).
  *
  * Supporting clauses: §4.5.1 (MSC191/5.3.2 — "lighter foreground information on a dark non-reflecting
- * background"; NOTE 5 — distinguishable ≥1:2 luminance); §4.7.1.1 (MSC191/5.5.1 — all colours in a
- * table shall clearly differ); §4.7.2.1 (MSC191/5.5.2) and §A.5 (SN243/1 — red reserved for alarm /
- * dangerous-target coding); Table 1 + §6.2.3 + §7.2.1 (day 200 / dusk 10 / night-darkness cd/m²,
- * brightness adjustable, dark adaptation maintained at night ⇒ peak luminance day > dusk > night).
+ * background"; also delegates colour tables to IHO S-52); §4.4.1.1 NOTE 5 — "visually distinguishable
+ * is at least luminance ratio 1:2"; §4.7.1.1 (MSC191/5.5.1 — all colours in a table shall clearly
+ * differ); §4.7.2.1 (MSC191/5.5.2 — the colour red shall be used for alarm / emergency-alarm coding);
+ * Table 1 + §6.2.3 (MSC191/7.2.1.3 — radar brightness variable) + §7.2.1 (day 200 / dusk 10 /
+ * night-darkness cd/m², brightness adjustable, night vision preserved ⇒ peak luminance day > dusk > night).
  *
  * ## What IEC 62288 still does NOT pin (remaining `TODO(待标准)` — see delivery report)
  *
@@ -87,8 +88,9 @@ object ColorMapper {
      * - DAY  : yellow  — high-contrast basic colour on a dark radar background.
      * - DUSK : orange  — reduced luminance; distinct from the alert red of §4.7.2.1.
      * - NIGHT: dark red — low luminance for scotopic viewing (§4.5.1 lighter-foreground-on-dark).
-     *   Per §5.4.1.1 a red radar image must be distinguishable from alert/dangerous-target red;
-     *   0x780000 (R=120) is ≥1:2 dimmer than a saturated alert red 0xFF0000 (§4.5.1 NOTE 5).
+     *   Per §5.4.1.1 a red radar image must be distinguishable from alert/dangerous-target red
+     *   (the alert red of §4.7.2.1); 0x780000 (R=120) is ≥1:2 dimmer than a saturated alert red
+     *   0xFF0000 (§4.4.1.1 NOTE 5 — visually distinguishable = luminance ratio ≥1:2).
      *
      * TODO(待标准: IHO S-52) — exact chromaticity is delegated by §4.5.1/§4.6.2 to the IHO S-52
      * Presentation Library (not yet in the standards library); these ARGB are compliant placeholders.

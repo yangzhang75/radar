@@ -14,14 +14,14 @@ import kotlin.test.assertTrue
  *  - **Standard-pinned** (IEC 62288 Ed.2): the colouring *method* — single basic colour per palette
  *    (§5.4.1.1), strength as tones of that colour (§5.4.1.1, §4.7.1.1), dark-background transparency
  *    (§5.4.1.1), distinguishable Doppler colours (§5.4.1.1), day>dusk>night peak luminance (Table 1 /
- *    §7.2.1), and night red ≥1:2 dimmer than a saturated alert red (§5.4.1.1 / §4.5.1 NOTE 5).
+ *    §7.2.1), and night red ≥1:2 dimmer than a saturated alert red (§5.4.1.1 / §4.4.1.1 NOTE 5).
  *  - **Regression locks** on the *exact ARGB* basic colours, which 62288 does NOT pin (delegated to
  *    IHO S-52 / vendor — see [ColorMapper] KDoc). These literals move with the constants; they are a
  *    change-detector, not a type-approval baseline.
  */
 class ColorMapperTest {
 
-    /** Canonical saturated alert / dangerous-target red (IEC 62288 §4.7.2.1, §A.5). Owned by the alarm layer; declared here only to assert echo reds are distinguishable from it. */
+    /** Canonical saturated alert / dangerous-target red (IEC 62288 §4.7.2.1, MSC191/5.5.2). Owned by the alarm layer; declared here only to assert echo reds are distinguishable from it. */
     private val ALERT_RED = 0xFFFF0000.toInt()
 
     // ---- contract: sample 0 = no signal = transparent background (§7.3.1 / Echo.kt) ----
@@ -148,9 +148,10 @@ class ColorMapperTest {
     }
 
     @Test
-    fun `night echo red is distinguishable from a saturated alert red (§5-4-1-1, §4-5-1 NOTE 5)`() {
+    fun `night echo red is distinguishable from a saturated alert red (§5-4-1-1, §4-4-1-1 NOTE 5)`() {
         // §5.4.1.1: a red radar image must be distinguishable from other uses of red (alarms /
-        // dangerous targets). §4.5.1 NOTE 5: visually distinguishable = ≥1:2 luminance ratio.
+        // dangerous targets, the alert red of §4.7.2.1). §4.4.1.1 NOTE 5: visually distinguishable
+        // = at least luminance ratio 1:2.
         // Applies across the whole night ramp, not just the peak.
         val alert = luminance(ALERT_RED)
         for (s in 1..15) {
