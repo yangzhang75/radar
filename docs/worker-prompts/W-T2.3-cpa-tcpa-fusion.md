@@ -8,7 +8,7 @@
 2. **只改 `ui-core/` 下、package `com.shipradar.uicore.target`**。不碰 shared、其他 package、根 gradle。
 3. 用 `com.shipradar.contract.TrackedTarget`/`TargetSource`/`TargetStatus`/`OwnShipData`。输出平台无关数据。
 4. 必须带单元测试，`./gradlew :ui-core:test` 全绿。
-5. **送认证**：CPA/TCPA、矢量时间、危险判据、容量阈值 KDoc 标注 `IMO A.823 §x` / `GB 11711 §x` / `IEC 62388 §x`；精确数值以标准为准，缺则 `TODO(待标准)`，不臆造。补 `docs/合规追溯矩阵.md` ARPA-01/CAP-01 行。
+5. **送认证**：CPA/TCPA、矢量时间、危险判据、容量阈值 KDoc 标注 `IMO A.823 §x` / `GB 11711 §x` / `IEC 62388 §x`；精确数值以标准为准，缺则 `TODO(待标准)`，不臆造。**勿直接改矩阵文件**；把 ARPA-01/CAP-01 落实的条款行写进交付报告，编排者并入。
 
 ## 实现要求
 纯函数/类，平台无关：

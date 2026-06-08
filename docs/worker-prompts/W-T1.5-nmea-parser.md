@@ -8,7 +8,7 @@
 2. **只改 `comms-core/` 下、package `com.shipradar.comms.iec61162`**。不碰 shared、其他 package、根 gradle。
 3. 输出类型用 `com.shipradar.contract.*`、角度/换算用 `com.shipradar.util`。
 4. 必须带单元测试，`./gradlew :comms-core:test` 全绿。
-5. **送认证**：每个语句解析函数 KDoc 标注 `IEC 61162-1 ED6 §8.x` 条款号；字段格式以标准原文为准，缺具体格式 `TODO(待标准: 61162-1 §x)`，不臆造。在 `docs/合规追溯矩阵.md` SENS-01 行补条款。
+5. **送认证**：每个语句解析函数 KDoc 标注 `IEC 61162-1 ED6 §8.x` 条款号；字段格式以标准原文为准，缺具体格式 `TODO(待标准: 61162-1 §x)`，不臆造。**勿直接改矩阵文件**；把 SENS-01 落实的条款行写进交付报告，编排者并入。
 
 ## 实现要求
 设计一个语句解析入口：`fun parse(raw: String): ParsedSentence?`（先校验 `$`/`!` 起始、`*` 校验和；失败返回 null 并可计数）。每种语句一个解析器，逐字段：

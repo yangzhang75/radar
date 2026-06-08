@@ -8,7 +8,7 @@ PPI 圆形画面需要把辐条的(方位, 量程)映射到屏幕像素，并生
 2. **只改 `ui-core/` 下、package `com.shipradar.uicore.ppi`**。不碰 shared、其他 package、根 gradle。**不要做着色**（T2.2 负责）、不做目标符号（T2.3 负责）。
 3. 用 `com.shipradar.contract.EchoSpoke`、`com.shipradar.constants.MANDATORY_RANGE_SCALES_NM`、`com.shipradar.util.Angles`。输出平台无关坐标（Float/Double，像素或归一化），不引入 Android。
 4. 必须带单元测试，`./gradlew :ui-core:test` 全绿。
-5. **送认证**：320mm 等效、量程档、刻度的实现 KDoc 标注 `IEC 62388 §x` / `IEC 62288 §x`；精确落实不近似，缺值 `TODO(待标准)`。补 `docs/合规追溯矩阵.md` DISP-01/02 行。
+5. **送认证**：320mm 等效、量程档、刻度的实现 KDoc 标注 `IEC 62388 §x` / `IEC 62288 §x`；精确落实不近似，缺值 `TODO(待标准)`。**勿直接改矩阵文件**；把 DISP-01/02 落实的条款行写进交付报告，编排者并入。
 
 ## 实现要求
 纯函数/数据类，平台无关：

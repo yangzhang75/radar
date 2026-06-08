@@ -8,7 +8,7 @@ PPI 渲染器（T2.1）按采样值取色绘制回波。你提供纯函数着色
 2. **只改 `ui-core/` 下、package `com.shipradar.uicore.color`**。不碰 shared、其他 package、根 gradle。
 3. 输入类型用 `com.shipradar.contract.SampleEncoding`；输出为平台无关的 ARGB `Int`（不引入 Android）。
 4. 必须带单元测试，`./gradlew :ui-core:test` 全绿。
-5. **每个颜色常量 KDoc 标注来源 `IEC 62288 §x.x`**；标准未给精确值的 `TODO(待标准: 62288 §x)` 占位，**不许近似**。在 `docs/合规追溯矩阵.md` DISP-03 行补条款。
+5. **每个颜色常量 KDoc 标注来源 `IEC 62288 §x.x`**；标准未给精确值的 `TODO(待标准: 62288 §x)` 占位，**不许近似**。**勿直接改矩阵文件**；把 DISP-03 落实的条款行写进交付报告，编排者并入。
 
 ## 实现要求
 `object ColorMapper`：
