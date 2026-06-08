@@ -14,6 +14,7 @@
 | `W-T1.2-halo-spoke-parser.md` | HALO 辐条解析→EchoSpoke | `comms-core` → `...comms.halo.image` | shared | `./gradlew :comms-core:test` |
 | `W-T1.3-halo-control-status.md` | 控制命令编码 + 状态消息解析 | `...comms.halo.control` / `...comms.halo.status` | shared | `./gradlew :comms-core:test` |
 | `W-T1.5-nmea-parser.md` | 61162-1 语句解析 | `...comms.iec61162` | shared | `./gradlew :comms-core:test` |
+| `W-T1.4-iec450-transport.md` | 61162-450 传输层(出 raw 语句串) | `...comms.iec450` | shared | `./gradlew :comms-core:test` |
 | `W-T2.2-color-mapper.md` | 多普勒/幅度着色 ColorMapper | `ui-core` → `...uicore.color` | shared | `./gradlew :ui-core:test` |
 | `W-T2.1-ppi-geometry.md` | PPI 极坐标→屏幕几何 | `...uicore.ppi` | shared | `./gradlew :ui-core:test` |
 | `W-T2.3-cpa-tcpa-fusion.md` | CPA/TCPA + 雷达/AIS 融合 | `...uicore.target` | shared | `./gradlew :ui-core:test` |
@@ -27,4 +28,4 @@
 6. 交付时报告：改了哪些文件、测试结果、遇到的阻塞、对接口的任何疑问。
 7. **合规追溯（型式认证强制）**：每个实现标准要求的类/函数，KDoc 注释中标注对应标准条款（如 `// IEC 62388 §6.x` / `// IEC 61162-1 ED6 §8.x` / `// IMO A.823 §x`）。精确实现标准数值，缺具体值时 `TODO(待标准: <标准号 §条款>)` 占位并报告，**不许近似或臆造**。**不要直接改 `docs/合规追溯矩阵.md`**（多人改同一文件会冲突）——把你落实的条款行写进交付报告，由编排者统一并入矩阵。原文 PDF 在 `桌面/雷达开发资料/标准资料/`。
 
-> 第二波（待 T1.5 接口产出 / 待 Android SDK+设备决策）：T1.4 450 传输层、T1.1 Foreground Service、T1.6 同步重连、T2.4–T2.9 Android/Compose UI、PPI 渲染面。
+> 第二波（待 Android SDK + 设备决策 §6 #3）：T1.1 Foreground Service、T1.6 同步重连+看门狗、T2.4–T2.9 Android/Compose UI、PPI 渲染面（消费 T2.1 几何 + T2.2 着色）。
