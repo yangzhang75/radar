@@ -18,5 +18,25 @@ data class AlarmEvent(
 /** BAM priorities (descending urgency). */
 enum class AlarmPriority { EMERGENCY_ALARM, ALARM, WARNING, CAUTION }
 
-/** BAM alarm state machine (IEC 62923-1). Detailed transitions TODO when 62923-1 is extracted (§5). */
-enum class AlarmState { ACTIVE_UNACK, ACTIVE_SILENCED, ACTIVE_ACK, RECTIFIED_UNACK, NORMAL }
+/**
+ * BAM alert state per IEC 62923-1:2018 §6.3.2.1 and Annex G state diagrams (Fig G.1–G.4).
+ * Finalized from the T2.8a delivery (was a placeholder). Non-acknowledgeable priorities
+ * (emergency alarm / caution) use [ACTIVE]; acknowledgeable ones (alarm / warning) traverse the
+ * unack → silenced → ack → responsibility-transferred / rectified states.
+ */
+enum class AlarmState {
+    /** No alert condition. Annex G E1/A1/W1/C1. */
+    NORMAL,
+    /** Active, non-acknowledgeable (emergency alarm / caution). Annex G E2/C2. */
+    ACTIVE,
+    /** Active – unacknowledged: flashing + audible. Annex G A2/W2. */
+    ACTIVE_UNACK,
+    /** Active – silenced: audible temporarily suppressed (restarts after 30 s). Annex G A4/W4. */
+    ACTIVE_SILENCED,
+    /** Active – acknowledged. Annex G A5/W5. */
+    ACTIVE_ACK,
+    /** Active – responsibility transferred. Annex G A6/W6. */
+    ACTIVE_RESP_TRANSFERRED,
+    /** Rectified – unacknowledged: condition cleared, not yet acknowledged. Annex G A3/W3. */
+    RECTIFIED_UNACK,
+}
