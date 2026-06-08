@@ -10,12 +10,19 @@ import kotlin.test.assertTrue
 /**
  * T2.2 ColorMapper tests (DISP-03).
  *
- * Asserted ARGB values track the provisional anchors in [ColorMapper]; they are pinned to
- * IEC 62388 §7.3.1 *named* hues but their exact luminance/ramp is a 62288 gap. When the 62288
- * colour tables land, these literals move with the constants — they are a regression lock, not a
- * type-approval baseline.
+ * Assertions are split into two kinds:
+ *  - **Standard-pinned** (IEC 62288 Ed.2): the colouring *method* — single basic colour per palette
+ *    (§5.4.1.1), strength as tones of that colour (§5.4.1.1, §4.7.1.1), dark-background transparency
+ *    (§5.4.1.1), distinguishable Doppler colours (§5.4.1.1), day>dusk>night peak luminance (Table 1 /
+ *    §7.2.1), and night red ≥1:2 dimmer than a saturated alert red (§5.4.1.1 / §4.4.1.1 NOTE 5).
+ *  - **Regression locks** on the *exact ARGB* basic colours, which 62288 does NOT pin (delegated to
+ *    IHO S-52 / vendor — see [ColorMapper] KDoc). These literals move with the constants; they are a
+ *    change-detector, not a type-approval baseline.
  */
 class ColorMapperTest {
+
+    /** Canonical saturated alert / dangerous-target red (IEC 62288 §4.7.2.1, MSC191/5.5.2). Owned by the alarm layer; declared here only to assert echo reds are distinguishable from it. */
+    private val ALERT_RED = 0xFFFF0000.toInt()
 
     // ---- contract: sample 0 = no signal = transparent background (§7.3.1 / Echo.kt) ----
 
@@ -113,22 +120,47 @@ class ColorMapperTest {
     }
 
     @Test
-    fun `amplitude peaks at the named §7-3-1 hue per palette`() {
+    fun `amplitude peaks at the basic colour per palette (regression lock, §5-4-1-1)`() {
+        // §5.4.1.1 pins the *method* (basic colour per ambient condition); exact ARGB is an
+        // IHO S-52 / vendor choice — these literals are a change-detector, not a cert baseline.
         assertEquals(0xFFFFFF00.toInt(), ColorMapper.amplitudeColor(15, Palette.DAY), "day peak = yellow")
         assertEquals(0xFFC86E00.toInt(), ColorMapper.amplitudeColor(15, Palette.DUSK), "dusk peak = orange")
-        assertEquals(0xFFB40000.toInt(), ColorMapper.amplitudeColor(15, Palette.NIGHT), "night peak = red")
+        assertEquals(0xFF780000.toInt(), ColorMapper.amplitudeColor(15, Palette.NIGHT), "night peak = dark red")
     }
 
     @Test
-    fun `night palette is a low-brightness red-black scheme`() {
-        // Night max luminance must stay well below day max (scotopic vision, IEC 62288 night mode).
-        val nightMax = luminance(ColorMapper.amplitudeColor(15, Palette.NIGHT))
-        val dayMax = luminance(ColorMapper.amplitudeColor(15, Palette.DAY))
-        assertTrue(nightMax < dayMax, "night must be dimmer than day: $nightMax !< $dayMax")
-        // Red/black: night peak has no green/blue energy.
+    fun `peak luminance decreases day to dusk to night (Table 1, §7-2-1)`() {
+        // IEC 62288 Table 1 (day 200 / dusk 10 / night-darkness cd/m²) + §7.2.1 (maintain dark
+        // adaptation at night) ⇒ the brightest echo must dim across the ambient conditions.
+        val day = luminance(ColorMapper.amplitudeColor(15, Palette.DAY))
+        val dusk = luminance(ColorMapper.amplitudeColor(15, Palette.DUSK))
+        val night = luminance(ColorMapper.amplitudeColor(15, Palette.NIGHT))
+        assertTrue(day > dusk, "day peak must be brighter than dusk: $day !> $dusk")
+        assertTrue(dusk > night, "dusk peak must be brighter than night: $dusk !> $night")
+    }
+
+    @Test
+    fun `night palette is a low-brightness red-on-dark scheme`() {
+        // §4.5.1 (MSC191/5.3.2): lighter foreground on a dark background; red-only at night.
         val peak = ColorMapper.amplitudeColor(15, Palette.NIGHT)
         assertEquals(0, (peak ushr 8) and 0xFF, "night green channel must be 0")
         assertEquals(0, peak and 0xFF, "night blue channel must be 0")
+    }
+
+    @Test
+    fun `night echo red is distinguishable from a saturated alert red (§5-4-1-1, §4-4-1-1 NOTE 5)`() {
+        // §5.4.1.1: a red radar image must be distinguishable from other uses of red (alarms /
+        // dangerous targets, the alert red of §4.7.2.1). §4.4.1.1 NOTE 5: visually distinguishable
+        // = at least luminance ratio 1:2.
+        // Applies across the whole night ramp, not just the peak.
+        val alert = luminance(ALERT_RED)
+        for (s in 1..15) {
+            val echo = luminance(ColorMapper.amplitudeColor(s, Palette.NIGHT))
+            assertTrue(
+                alert >= 2.0 * echo,
+                "night echo red at sample $s ($echo) must be >=1:2 dimmer than alert red ($alert)",
+            )
+        }
     }
 
     @Test
