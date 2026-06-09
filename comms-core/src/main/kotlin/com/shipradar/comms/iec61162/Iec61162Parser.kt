@@ -1,5 +1,6 @@
 package com.shipradar.comms.iec61162
 
+import com.shipradar.comms.alarm.AlertCatalog
 import com.shipradar.contract.AlarmEvent
 import com.shipradar.contract.AlarmPriority
 import com.shipradar.contract.AlarmState
@@ -8,6 +9,7 @@ import com.shipradar.contract.SensorKind
 import com.shipradar.contract.TargetSource
 import com.shipradar.contract.TargetStatus
 import com.shipradar.contract.TrackedTarget
+import com.shipradar.util.Angles
 
 /**
  * Entry point for IEC 61162-1 ED6 sentence parsing (task T1.5, SENS-01 evidence).
@@ -20,9 +22,11 @@ import com.shipradar.contract.TrackedTarget
  * The instance is cheap and holds only drop/parse counters; it is NOT thread-safe for the
  * counters (wrap externally if shared across threads). Parsing itself is stateless per sentence.
  *
- * Fully implemented (T1.5 mandatory): HDT, GGA, RMC, VTG, VDM, TTM, ALF.
- * Additionally implemented (share the same primitives, low risk): GLL, GNS, THS, ROT, ZDA, VDO, ALR.
- * Recognised-but-deferred formatters return [ParsedSentence.Unsupported] with the clause TODO.
+ * Implemented sentence set (§8.3): HDT, THS, ROT, HDG, GGA, GLL, GNS, RMC, VTG, OSD, VBW, ZDA
+ * (own-ship/nav); VDM, VDO, TTM, TLL, TLB, RSD (targets/radar); ALF, ALR, ALC, ACN, ACK, ARC
+ * (alerts/commands); DDC, HBT (display/supervision). AIS position reports decode Msg 1/2/3/18/19.
+ * Deferred (see [DEFERRED_FORMATTERS]): AIS static data (TTD/SSD/VSD — needs ITU-R M.1371 + a
+ * contract static-attributes extension) and TXT. Deferred formatters return [ParsedSentence.Unsupported].
  */
 class Iec61162Parser {
 
@@ -62,11 +66,23 @@ class Iec61162Parser {
             "RMC" -> parseRmc(f)
             "VTG" -> parseVtg(f)
             "ZDA" -> parseZda(f)
+            "HDG" -> parseHdg(f)
+            "OSD" -> parseOsd(f)
+            "VBW" -> parseVbw(f)
             "VDM" -> parseVdm(f, ownVessel = false)
             "VDO" -> parseVdm(f, ownVessel = true)
             "TTM" -> parseTtm(f)
+            "TLL" -> parseTll(f)
+            "TLB" -> parseTlb(f)
+            "RSD" -> parseRsd(f)
             "ALF" -> parseAlf(f)
             "ALR" -> parseAlr(f)
+            "ALC" -> parseAlc(f)
+            "ACN" -> parseAcn(f)
+            "ACK" -> parseAck(f)
+            "ARC" -> parseArc(f)
+            "DDC" -> parseDdc(f)
+            "HBT" -> parseHbt(f)
             else -> null
         }
         return when (result) {
@@ -368,9 +384,10 @@ class Iec61162Parser {
         }
         return ParsedSentence.AlertUpdate(f.talker, f.formatter, AlarmEvent(
             identifier = identifier,
-            // ALR carries no BAM priority field; priority resolved from the alert catalogue (T2.8).
-            // TODO(待标准: 61162-1 §8.3.15) map identifier -> priority via 62923-2 alert list.
-            priority = AlarmPriority.WARNING,
+            // ALR carries no BAM priority field. Resolve from IEC 62923-2 Table A.1 when the alarm
+            // number is a standard alert id; ALR is legacy (device-local numbers) so fall back to
+            // WARNING. (ALRM-01 via comms.alarm.AlertCatalog.)
+            priority = AlertCatalog.priorityOf(identifier) ?: AlarmPriority.WARNING,
             state = state,
             text = f.field(5),
             source = f.talker,
@@ -378,10 +395,195 @@ class Iec61162Parser {
         ))
     }
 
+    /** §8.3.51 HDG — Heading, deviation and variation. `$--HDG,x.x,x.x,a,x.x,a*hh`.
+     *  Computes true heading from the magnetic sensor reading + deviation + variation. */
+    private fun parseHdg(f: SentenceFrame): ParsedSentence? {
+        val sensor = Fields.parseDouble(f.field(1)) ?: return null
+        // §8.3.51 comments 2)/3): magnetic = sensor ± deviation (E +, W −); true = magnetic ± variation.
+        val deviation = signedDir(Fields.parseDouble(f.field(2)), f.field(3))
+        val variation = signedDir(Fields.parseDouble(f.field(4)), f.field(5))
+        val magnetic = sensor + deviation
+        val hasVariation = Fields.parseDouble(f.field(4)) != null && f.field(5) != null
+        val heading = if (hasVariation) magnetic + variation else magnetic
+        return ownShip(f, OwnShipData(
+            headingDeg = Angles.normalizeDeg(heading),
+            headingTrue = hasVariation, // true heading only once variation has been applied
+            sourceValidity = mapOf(SensorKind.HEADING to true),
+        ))
+    }
+
+    /** §8.3.75 OSD — Own ship data. `$--OSD,x.x,A,x.x,a,x.x,a,x.x,x.x,a*hh`. */
+    private fun parseOsd(f: SentenceFrame): ParsedSentence? {
+        val heading = Fields.parseDouble(f.field(1))   // degrees true
+        val headingValid = f.field(2)?.uppercase() != "V"
+        val course = Fields.parseDouble(f.field(3))    // degrees true
+        val speed = Fields.parseDouble(f.field(5))
+        val units = f.field(9)?.uppercase() ?: "N"     // K km/h, N knots, S statute mi/h
+        val sog = speed?.let { it * distanceToNm(units) }
+        if (heading == null && course == null && sog == null) return null
+        val validity = buildMap {
+            if (heading != null) put(SensorKind.HEADING, headingValid)
+            if (course != null || sog != null) put(SensorKind.COG_SOG, true)
+        }
+        return ownShip(f, OwnShipData(
+            headingDeg = heading, headingTrue = true, cogDeg = course, sogKn = sog,
+            sourceValidity = validity,
+        ))
+    }
+
+    /** §8.3.113 VBW — Dual ground/water speed. `$--VBW,x.x,x.x,A,x.x,x.x,A,x.x,A,x.x,A*hh` (knots).
+     *  SOG = longitudinal ground speed (field 4). Speed-through-water (field 1) has no contract home. */
+    private fun parseVbw(f: SentenceFrame): ParsedSentence? {
+        val longitudinalGround = Fields.parseDouble(f.field(4)) ?: return null
+        val groundValid = f.field(6)?.uppercase() != "V"
+        // TODO(待标准: 61162-1 §8.3.113) transverse drift (field 5) + STW (field 1) — no OwnShipData field.
+        return ownShip(f, OwnShipData(
+            sogKn = longitudinalGround,
+            sourceValidity = mapOf(SensorKind.COG_SOG to groundValid, SensorKind.SPEED_LOG to groundValid),
+        ))
+    }
+
+    /** §8.3.103 TLL — Target latitude and longitude.
+     *  `$--TLL,xx,llll.ll,a,yyyyy.yy,a,c--c,hhmmss.ss,a,a*hh`. */
+    private fun parseTll(f: SentenceFrame): ParsedSentence? {
+        val number = f.field(1) ?: return null
+        val lat = Fields.parseLatitude(f.field(2), f.field(3))
+        val lon = Fields.parseLongitude(f.field(4), f.field(5))
+        if (lat == null || lon == null) return null
+        val status = when (f.field(8)?.uppercase()) {
+            "L" -> TargetStatus.LOST
+            "Q" -> TargetStatus.ACQUIRING
+            "T" -> TargetStatus.TRACKED
+            else -> null
+        }
+        return ParsedSentence.TargetGeoUpdate(
+            f.talker, f.formatter,
+            targetNumber = number.trim(),
+            name = f.field(6),
+            latitude = lat, longitude = lon,
+            utcMillisOfDay = Fields.parseTimeOfDaySeconds(f.field(7))?.let { it * 1000.0 },
+            status = status,
+            isReference = f.field(9)?.uppercase() == "R",
+        )
+    }
+
+    /** §8.3.102 TLB — Target label. `$--TLB,x.x,c--c,x.x,c--c,...*hh` (target-number/label pairs). */
+    private fun parseTlb(f: SentenceFrame): ParsedSentence? {
+        val labels = LinkedHashMap<String, String>()
+        var i = 1
+        while (i <= f.dataFieldCount) {
+            val number = f.field(i)
+            val label = f.field(i + 1)
+            if (number != null && label != null) labels[number.trim()] = label
+            i += 2
+        }
+        if (labels.isEmpty()) return null
+        return ParsedSentence.TargetLabels(f.talker, f.formatter, labels)
+    }
+
+    /** §8.3.87 RSD — Radar system data.
+     *  `$--RSD,x.x,x.x,x.x,x.x,x.x,x.x,x.x,x.x,x.x,x.x,x.x,a,a*hh` (cursor/EBL·VRM 1·2/scale/units/rot). */
+    private fun parseRsd(f: SentenceFrame): ParsedSentence? {
+        val units = f.field(12)?.uppercase() ?: "N"  // §8.3.87: K km, N nm, S statute mi
+        val toNm = distanceToNm(units)
+        fun rng(idx: Int) = Fields.parseDouble(f.field(idx))?.let { it * toNm }
+        return ParsedSentence.RadarSystemDataUpdate(f.talker, f.formatter, RadarSystemData(
+            origin1RangeNm = rng(1), origin1BearingDeg = Fields.parseDouble(f.field(2)),
+            vrm1Nm = rng(3), ebl1Deg = Fields.parseDouble(f.field(4)),
+            origin2RangeNm = rng(5), origin2BearingDeg = Fields.parseDouble(f.field(6)),
+            vrm2Nm = rng(7), ebl2Deg = Fields.parseDouble(f.field(8)),
+            cursorRangeNm = rng(9), cursorBearingDeg = Fields.parseDouble(f.field(10)),
+            rangeScaleNm = rng(11),
+            orientation = DisplayOrientation.fromCode(f.field(13)),
+        ))
+    }
+
+    /** §8.3.13 ALC — Cyclic alert list. `$--ALC,xx,xx,xx,x.x,{aaa,x.x,x.x,x.x}...*hh`. */
+    private fun parseAlc(f: SentenceFrame): ParsedSentence {
+        val count = Fields.parseInt(f.field(4)) ?: 0
+        val entries = ArrayList<AlertListEntry>()
+        for (k in 0 until count) {
+            val base = 5 + k * 4 // groups of {manufacturer, identifier, instance, revision}
+            val id = Fields.parseInt(f.field(base + 1)) ?: continue
+            entries.add(AlertListEntry(
+                identifier = id,
+                instance = Fields.parseInt(f.field(base + 2)),
+                revisionCounter = Fields.parseInt(f.field(base + 3)),
+                manufacturer = f.field(base),
+                // ALRM-01: resolve priority from IEC 62923-2 Table A.1 for standardised ids.
+                priority = AlertCatalog.priorityOf(id),
+            ))
+        }
+        return ParsedSentence.AlertListUpdate(f.talker, f.formatter, entries)
+    }
+
+    /** §8.3.7 ACN — Alert command. `$--ACN,hhmmss.ss,aaa,x.x,x.x,a,a*hh` (cmd A/Q/O/S, flag C). */
+    private fun parseAcn(f: SentenceFrame): ParsedSentence? {
+        val identifier = Fields.parseInt(f.field(3)) ?: return null
+        val kind = AlertCommandKind.fromCode(f.field(5)) ?: return null
+        return ParsedSentence.AlertCommandReceived(f.talker, f.formatter, AlertCommand(
+            identifier = identifier,
+            instance = Fields.parseInt(f.field(4)),
+            kind = kind,
+            manufacturer = f.field(2),
+            utcSecondsOfDay = Fields.parseTimeOfDaySeconds(f.field(1)),
+        ))
+    }
+
+    /** §8.3.6 ACK — Acknowledge alarm (legacy, deprecated). `$--ACK,xxx*hh` (unique alarm number). */
+    private fun parseAck(f: SentenceFrame): ParsedSentence? {
+        val identifier = Fields.parseInt(f.field(1)) ?: return null
+        return ParsedSentence.AlertCommandReceived(f.talker, f.formatter, AlertCommand(
+            identifier = identifier, kind = AlertCommandKind.ACKNOWLEDGE,
+        ))
+    }
+
+    /** §8.3.17 ARC — Alert command refused. `$--ARC,hhmmss.ss,aaa,x.x,x.x,a*hh` (refused cmd A/Q/O/S). */
+    private fun parseArc(f: SentenceFrame): ParsedSentence? {
+        val identifier = Fields.parseInt(f.field(3)) ?: return null
+        val refused = AlertCommandKind.fromCode(f.field(5)) ?: return null
+        return ParsedSentence.AlertCommandRefused(f.talker, f.formatter, AlertCommandRefusal(
+            identifier = identifier,
+            instance = Fields.parseInt(f.field(4)),
+            refused = refused,
+            manufacturer = f.field(2),
+            utcSecondsOfDay = Fields.parseTimeOfDaySeconds(f.field(1)),
+        ))
+    }
+
+    /** §8.3.26 DDC — Display dimming control. `$--DDC,a,xx,a,a*hh` (mode/brightness/palette/status). */
+    private fun parseDdc(f: SentenceFrame): ParsedSentence? {
+        val mode = DimMode.fromCode(f.field(1))
+        val brightness = Fields.parseInt(f.field(2))?.coerceIn(0, 99)
+        val palette = DimMode.fromCode(f.field(3))
+        if (mode == null && brightness == null && palette == null) return null
+        return ParsedSentence.DisplayDimming(f.talker, f.formatter, mode, brightness, palette)
+    }
+
+    /** §8.3.49 HBT — Heartbeat supervision. `$--HBT,x.x,A,x*hh` (interval s, status A/V, seq id). */
+    private fun parseHbt(f: SentenceFrame): ParsedSentence? {
+        val status = f.field(2)?.uppercase() ?: return null
+        return ParsedSentence.Heartbeat(
+            f.talker, f.formatter,
+            intervalSec = Fields.parseDouble(f.field(1)),
+            alive = status == "A", // §8.3.49 comment 2): A normal operation, V error
+        )
+    }
+
     // ---- helpers ------------------------------------------------------------------------------
 
     private fun ownShip(f: SentenceFrame, data: OwnShipData) =
         ParsedSentence.OwnShipUpdate(f.talker, f.formatter, data)
+
+    /** Apply an E/W direction sign to a magnitude (E = +, W = −); 0 when value/direction absent. */
+    private fun signedDir(value: Double?, dir: String?): Double {
+        if (value == null) return 0.0
+        return when (dir?.uppercase()) {
+            "E" -> value
+            "W" -> -value
+            else -> 0.0
+        }
+    }
 
     /** §8.3.108 field 10 units: K = kilometres, N = nautical miles, S = statute miles -> NM factor. */
     private fun distanceToNm(units: String): Double = when (units) {
@@ -400,20 +602,12 @@ class Iec61162Parser {
          * "remaining work" registry surfaced via [ParsedSentence.Unsupported].
          */
         val DEFERRED_FORMATTERS: Map<String, String> = mapOf(
-            "HDG" to "TODO(待标准: 61162-1 §8.3.51) magnetic heading + deviation/variation -> true heading",
-            "VBW" to "TODO(待标准: 61162-1 §8.3.113) dual ground/water speed -> OwnShipData",
-            "OSD" to "TODO(待标准: 61162-1 §8.3.75) own ship data (heading/course/speed/set/drift)",
-            "TTD" to "TODO(待标准: 61162-1 §8.3.107 + ITU-R M.1371) encapsulated tracked target data (6-bit)",
-            "TLL" to "TODO(待标准: 61162-1 §8.3.103) target lat/lon -> TrackedTarget (needs own-ship range/bearing fusion)",
-            "TLB" to "TODO(待标准: 61162-1 §8.3.102) target label association",
-            "RSD" to "TODO(待标准: 61162-1 §8.3.87) radar system data (display/cursor/EBL/VRM)",
-            "SSD" to "TODO(待标准: 61162-1 §8.3.99) AIS ship static data",
-            "VSD" to "TODO(待标准: 61162-1 §8.3.121) AIS voyage static data",
-            "ALC" to "TODO(待标准: 61162-1 §8.3.13 + 62923-1) cyclic alert list",
-            "ACN" to "TODO(待标准: 61162-1 §8.3.7 + 62923-1) alert command (ack/silence/responsibility)",
-            "ARC" to "TODO(待标准: 61162-1 §8.3.17) alert command refused",
-            "HBT" to "TODO(待标准: 61162-1 §8.3.49) heartbeat supervision",
-            "DDC" to "TODO(待标准: 61162-1 §8.3.26) display dimming control",
+            // AIS static/voyage data — skipped pending the AIS message standard + a contract
+            // static-attributes extension (W5-A scope note; see also AisPayloadDecoder type 5/24).
+            "TTD" to "TODO(待标准: ITU-R M.1371) encapsulated tracked target data (6-bit) — needs AIS decode + contract",
+            "SSD" to "TODO(待标准: ITU-R M.1371) AIS ship static data (name/callsign/dims) — needs contract static fields",
+            "VSD" to "TODO(待标准: ITU-R M.1371) AIS voyage static data (draught/destination) — needs contract static fields",
+            // Free text — no structured contract mapping required yet.
             "TXT" to "TODO(待标准: 61162-1 §8.3.110) text transmission",
         )
     }

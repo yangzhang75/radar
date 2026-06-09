@@ -230,9 +230,10 @@ class Iec61162ParserTest {
     }
 
     @Test fun recognised_but_deferred_formatter_returns_unsupported_with_clause() {
-        val r = parser.parse("\$RARSD,,,,,,,,,,,,,,*56")
+        // TXT remains deferred (W5-A implemented RSD/TLL/etc., so use a still-deferred formatter).
+        val r = parser.parse("\$RATXT,01,01,01,TEST*5C")
         assertTrue(r is ParsedSentence.Unsupported)
-        assertTrue((r as ParsedSentence.Unsupported).note.contains("§8.3.87"))
+        assertTrue((r as ParsedSentence.Unsupported).note.contains("§8.3.110"))
         assertEquals(1, parser.stats.unsupported)
         assertEquals(0, parser.stats.parsed)
     }
