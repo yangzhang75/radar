@@ -25,7 +25,9 @@
 - 第二波·免设备的领域匹配建议见本文件末尾派工表的"复用谁"列。
 
 ## 所有员工通用规则（铁律）
-1. **独立 worktree + 分支**：`git worktree add ../wt-<名> -b feat/<名>`，从 commit `3d07258` 起。
+1. **独立 worktree + 分支**：**务必建到非桌面的绝对路径**(否则会弄乱用户桌面!)：
+   `git worktree add /Users/yangzhang/.superset/worktrees/radar/wt-<名> -b feat/<名> main`。
+   **绝不要用 `../wt-<名>`**(会话工作目录在桌面时会落到桌面)。从 `main` 起分支。
 2. **只改你被分配的 package 目录**。绝不碰 `shared/`（接口已冻结，只读引用）、不碰别人的 package、不改根 `build.gradle`/`settings.gradle`（依赖已齐备）。需要改接口？停下，找编排者。
 3. **接口只读**：你消费/产出的数据类型全部来自 `com.shipradar.contract`、常量来自 `com.shipradar.constants`、工具来自 `com.shipradar.util`。
 4. **必须带单元测试**，且 `./gradlew :<你的模块>:test` 全绿才算完成。能对照协议文档原文示例的，写成断言。**全绿后立即 `git add -A && git commit`（不要等批准——不提交=编排者看不到、无法合并/验收）。**
