@@ -8,6 +8,11 @@ import com.shipradar.comms.halo.target.TargetParser
 import com.shipradar.comms.iec450.Iec450DiscardCounters
 import com.shipradar.comms.iec450.Iec450FrameParser
 import com.shipradar.comms.iec450.Iec450Group
+import com.shipradar.comms.alarm.AlarmCommand
+import com.shipradar.comms.alarm.AlarmIntent
+import com.shipradar.comms.alarm.BamAlarmManager
+import com.shipradar.comms.iec61162.AlertCommand
+import com.shipradar.comms.iec61162.AlertCommandKind
 import com.shipradar.comms.iec61162.Iec61162Parser
 import com.shipradar.comms.iec61162.ParsedSentence
 import com.shipradar.comms.sync.DataChannel
@@ -89,6 +94,11 @@ class CommsRouter(config: CommsConfig) {
     private val ownShipFusion = OwnShipFusion()
     private val targetAggregator = TargetAggregator()
 
+    // BAM alarm state machine — the single source of truth for alarm state. Inbound alerts (ALR/ALF)
+    // are raised through it and inbound commands (ACN/ARC) drive its transitions, so a central alarm
+    // panel can acknowledge/silence/transfer our alarms (IEC 62923-1 §6.3 / §6.9).
+    private val alarmManager = BamAlarmManager()
+
     // --- diagnostics (not part of the contract) ---
     @Volatile var discardCounters = Iec450DiscardCounters(); private set
     var aisDeferred = 0L; private set
@@ -125,32 +135,66 @@ class CommsRouter(config: CommsConfig) {
     fun on450(group: Iec450Group, bytes: ByteArray, now: Long): List<LinkAction> {
         val result = iec450.parse(bytes, group)
         discardCounters += result.discards
-        for (ts in result.sentences) routeSentence(ts.rawSentence)
+        for (ts in result.sentences) routeSentence(ts.rawSentence, now)
         return supervisor.onPacket(channelFor(group), now)
     }
 
-    private fun routeSentence(raw: String) {
+    private fun routeSentence(raw: String, now: Long) {
         when (val parsed = iec61162.parse(raw)) {
             is ParsedSentence.OwnShipUpdate -> _ownShip.value = ownShipFusion.merge(parsed.data)
             is ParsedSentence.TargetUpdate -> _targets.value = targetAggregator.upsert(parsed.target)
-            is ParsedSentence.AlertUpdate -> _alarms.tryEmit(parsed.alarm)
+            // Inbound alert (ALR/ALF) → raise through the BAM state machine, emit the resulting event.
+            is ParsedSentence.AlertUpdate -> emitAlarms(
+                alarmManager.raise(
+                    identifier = parsed.alarm.identifier,
+                    nowMillis = now,
+                    text = parsed.alarm.text,
+                    source = parsed.alarm.source,
+                    priorityOverride = parsed.alarm.priority,
+                ),
+            )
+            // Inbound command (ACN ack/silence/responsibility) → drive the state machine.
+            is ParsedSentence.AlertCommandReceived ->
+                emitAlarms(alarmManager.accept(parsed.command.toAlarmCommand(), now))
+            // ARC (a refusal reported by the source) and ALC (cyclic list) are informational here;
+            // ARC reasons surface via the manager's own RefuseAcn path. No bus emission needed.
+            is ParsedSentence.AlertCommandRefused -> {}
+            is ParsedSentence.AlertListUpdate -> {}
             // AIS position reports are geographic-only; range/bearing fusion needs own-ship + ui-core
             // geometry (T1.6/ui-core), so they are counted here, not synthesised into targets.
             is ParsedSentence.AisPositionReport -> aisDeferred++
-            // W5-A secondary sentences: parsed + available, routed where trivial; the rest are
-            // intentionally not yet wired to the bus — TODO(T1.x), tracked in 认证缺口清单 D-class.
+            // W5-A secondary sentences not yet wired to the bus — TODO(T1.x), tracked in 认证缺口清单 D-class.
             is ParsedSentence.TargetGeoUpdate -> aisDeferred++   // TLL geo-only; needs own-ship/geometry fusion (T1.6)
             is ParsedSentence.TargetLabels -> {}                 // TLB label association: needs a target-label store
             is ParsedSentence.RadarSystemDataUpdate -> {}        // RSD EBL/VRM/cursor: UI-side state (T2.5)
             is ParsedSentence.DisplayDimming -> {}               // DDC: should drive day/dusk/night palette (T2.9)
             is ParsedSentence.Heartbeat -> {}                    // HBT: sensor-supervision feed (T1.6 supervisor)
-            is ParsedSentence.AlertListUpdate -> {}              // ALC cyclic alert list -> alarms
-            is ParsedSentence.AlertCommandReceived -> {}         // ACN ack/responsibility -> BamAlarmManager (W5-B)
-            is ParsedSentence.AlertCommandRefused -> {}          // ARC -> BamAlarmManager (W5-B)
             is ParsedSentence.Unsupported -> {}
             null -> {}
         }
     }
+
+    /** Emit the UI-facing [AlarmEvent]s carried by the manager's intents (ReportAlf/ReportAlc). */
+    private fun emitAlarms(intents: List<AlarmIntent>) {
+        for (intent in intents) when (intent) {
+            is AlarmIntent.ReportAlf -> _alarms.tryEmit(intent.event)
+            is AlarmIntent.ReportAlc -> intent.alerts.forEach { _alarms.tryEmit(it) }
+            // RefuseAcn (→ outbound ARC), Annunciate (→ audible/visual driver), Escalate (timeout-driven
+            // via tick(), not raise/accept) are not part of the UI AlarmEvent stream.
+            else -> {}
+        }
+    }
+
+    private fun AlertCommand.toAlarmCommand(): AlarmCommand = AlarmCommand(
+        identifier = identifier,
+        kind = when (kind) {
+            AlertCommandKind.ACKNOWLEDGE -> AlarmCommand.Kind.ACKNOWLEDGE
+            AlertCommandKind.SILENCE -> AlarmCommand.Kind.SILENCE
+            AlertCommandKind.RESPONSIBILITY_TRANSFER -> AlarmCommand.Kind.RESPONSIBILITY_TRANSFER
+            AlertCommandKind.REQUEST_REPEAT -> AlarmCommand.Kind.REQUEST_REPEAT
+        },
+        instance = instance ?: 1,
+    )
 
     private fun channelFor(group: Iec450Group): DataChannel = when (group) {
         Iec450Group.TGTD -> DataChannel.TARGET

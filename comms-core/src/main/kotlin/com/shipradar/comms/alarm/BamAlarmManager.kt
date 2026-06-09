@@ -170,8 +170,9 @@ class BamAlarmManager {
             return intents
         }
 
-        val event = command.event
-            ?: return listOf(AlarmIntent.RefuseAcn(command.identifier, command.instance, AlarmEventType.ACKNOWLEDGE, "unsupported command ${command.kind}"))
+        // Only REQUEST_REPEAT carries a null event, and it already returned above — so by here the
+        // command always maps to a transition event. Assert the invariant instead of dead-coding it.
+        val event = requireNotNull(command.event) { "command ${command.kind} must map to a state-machine event" }
 
         val intents = command(command.identifier, command.instance, event, nowMillis)
         // Append an ALC list reply only when the command actually changed state (an ALF was emitted).
