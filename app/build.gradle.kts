@@ -10,7 +10,7 @@ android {
 
     defaultConfig {
         applicationId = "com.shipradar.app"
-        minSdk = 26
+        minSdk = 28
         targetSdk = 34
         versionCode = 1
         versionName = "0.1"
