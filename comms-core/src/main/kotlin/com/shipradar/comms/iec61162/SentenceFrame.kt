@@ -17,6 +17,9 @@ internal class SentenceFrame private constructor(
     /** Field by 1-based data-field index as used in the standard's diagrams; null/blank → null. */
     fun field(index1Based: Int): String? = fields.getOrNull(index1Based - 1)?.takeIf { it.isNotEmpty() }
 
+    /** Number of data fields (after the address field) — for sentences with repeating groups (TLB/ALC). */
+    val dataFieldCount: Int get() = fields.size
+
     sealed interface Result {
         data class Ok(val frame: SentenceFrame) : Result
         /** Start delimiter / "*" / length / address-field problems — a structurally broken packet. */

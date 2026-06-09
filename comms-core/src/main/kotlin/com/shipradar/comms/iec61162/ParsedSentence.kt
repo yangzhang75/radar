@@ -2,6 +2,7 @@ package com.shipradar.comms.iec61162
 
 import com.shipradar.contract.AlarmEvent
 import com.shipradar.contract.OwnShipData
+import com.shipradar.contract.TargetStatus
 import com.shipradar.contract.TrackedTarget
 
 /**
@@ -80,5 +81,74 @@ sealed interface ParsedSentence {
         override val talker: String,
         override val formatter: String,
         val note: String,
+    ) : ParsedSentence
+
+    /**
+     * A geographic target report (TLL §8.3.103) — target number/name + lat/lon + UTC + status.
+     * Like an AIS report it is geographic-only; the own-ship-relative range/bearing a unified
+     * [TrackedTarget] needs is computed by fusion (T1.6 + ui-core geometry).
+     */
+    data class TargetGeoUpdate(
+        override val talker: String,
+        override val formatter: String,
+        val targetNumber: String,
+        val name: String? = null,
+        val latitude: Double? = null,
+        val longitude: Double? = null,
+        val utcMillisOfDay: Double? = null,
+        val status: TargetStatus? = null,
+        val isReference: Boolean = false,
+    ) : ParsedSentence
+
+    /** Target-number → label associations (TLB §8.3.102). */
+    data class TargetLabels(
+        override val talker: String,
+        override val formatter: String,
+        val labels: Map<String, String>,
+    ) : ParsedSentence
+
+    /** Radar display/measurement state (RSD §8.3.87): cursor / EBL·VRM 1·2 / range scale / rotation. */
+    data class RadarSystemDataUpdate(
+        override val talker: String,
+        override val formatter: String,
+        val data: RadarSystemData,
+    ) : ParsedSentence
+
+    /** Display dimming / palette command (DDC §8.3.26). */
+    data class DisplayDimming(
+        override val talker: String,
+        override val formatter: String,
+        val mode: DimMode?,
+        val brightnessPercent: Int?,
+        val palette: DimMode?,
+    ) : ParsedSentence
+
+    /** Heartbeat supervision (HBT §8.3.49): expected repeat interval + equipment-alive flag. */
+    data class Heartbeat(
+        override val talker: String,
+        override val formatter: String,
+        val intervalSec: Double?,
+        val alive: Boolean,
+    ) : ParsedSentence
+
+    /** Cyclic alert list (ALC §8.3.13): the source's current set of active alerts. */
+    data class AlertListUpdate(
+        override val talker: String,
+        override val formatter: String,
+        val entries: List<AlertListEntry>,
+    ) : ParsedSentence
+
+    /** An inbound alert command (ACN §8.3.7 / legacy ACK §8.3.6), for the alarm state machine (W5-B). */
+    data class AlertCommandReceived(
+        override val talker: String,
+        override val formatter: String,
+        val command: AlertCommand,
+    ) : ParsedSentence
+
+    /** An inbound alert-command refusal (ARC §8.3.17). */
+    data class AlertCommandRefused(
+        override val talker: String,
+        override val formatter: String,
+        val refusal: AlertCommandRefusal,
     ) : ParsedSentence
 }
