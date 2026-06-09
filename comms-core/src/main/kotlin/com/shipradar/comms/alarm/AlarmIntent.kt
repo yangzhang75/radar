@@ -5,8 +5,9 @@ import com.shipradar.contract.AlarmEvent
 /**
  * Outbound *intents* produced by the alarm logic — **descriptions of what should happen**, not the
  * actions themselves. Per T2.8a scope this layer never touches sockets, serial or 61162 encoding:
- * the comms channel (T1.3/T1.5) turns [ReportAlf]/[RefuseAcn] into IEC 61162-1 ALF/ARC sentences,
- * and the UI (second wave) consumes [Annunciate]. Everything here is plain immutable data.
+ * the comms channel (T1.3/T1.5) turns [ReportAlf]/[ReportAlc]/[RefuseAcn] into IEC 61162-1
+ * ALF/ALC/ARC sentences, and the UI (second wave) consumes [Annunciate]. Everything here is plain
+ * immutable data.
  */
 sealed interface AlarmIntent {
 
@@ -36,6 +37,14 @@ sealed interface AlarmIntent {
         val attempted: AlarmEventType,
         val reason: String,
     ) : AlarmIntent
+
+    /**
+     * Report the current set of active alerts — encoded downstream as an **ALC** alert-list sentence
+     * (IEC 62923-1 §6.3 / Annex C). The source emits an ALC in reply to a received command (e.g. a
+     * REQUEST_REPEAT ACN) and whenever the list changes, so a BAM/CAM can rebuild the list view.
+     * [alerts] is the live snapshot, most-recently-changed ordering left to the encoder.
+     */
+    data class ReportAlc(val alerts: List<AlarmEvent>) : AlarmIntent
 
     /**
      * Drive the annunciator. Derived from the alert state + priority per Annex G / Table 3 (visual)

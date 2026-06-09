@@ -146,6 +146,39 @@ class BamAlarmManager {
     }
 
     /**
+     * Consume a received alert command (61162 **ACN**, IEC 62923-1 §6.3 / §6.9) and return the
+     * outbound receipt intents:
+     *
+     *  - **acknowledge / silence / responsibility-transfer** → drive the state machine via [command];
+     *    on a successful state change the changed alert's [AlarmIntent.ReportAlf] is followed by an
+     *    [AlarmIntent.ReportAlc] list reply, so the requesting BAM/CAM sees both. An illegal or denied
+     *    command yields an [AlarmIntent.RefuseAcn] (→ ARC) and no ALC.
+     *  - **request-repeat** ('Q') → no state change; re-issue the current [AlarmIntent.ReportAlc]
+     *    (plus the addressed alert's [AlarmIntent.ReportAlf] if still active).
+     *
+     * This is the single inbound entry point for [AlarmCommand] (the W5-A parser's target type);
+     * it leaves [command]/[raise]/[tick] untouched as the lower-level primitives.
+     */
+    fun accept(command: AlarmCommand, nowMillis: Long): List<AlarmIntent> {
+        val key = Key(command.identifier, command.instance)
+
+        if (command.kind == AlarmCommand.Kind.REQUEST_REPEAT) {
+            // 'Q': re-issue the list (+ the addressed alert if present). No transition.
+            val intents = mutableListOf<AlarmIntent>()
+            entries[key]?.let { intents += emitFor(it, previous = it.state, cause = AlarmEventType.RAISE, nowMillis = nowMillis) }
+            intents += AlarmIntent.ReportAlc(snapshot())
+            return intents
+        }
+
+        val event = command.event
+            ?: return listOf(AlarmIntent.RefuseAcn(command.identifier, command.instance, AlarmEventType.ACKNOWLEDGE, "unsupported command ${command.kind}"))
+
+        val intents = command(command.identifier, command.instance, event, nowMillis)
+        // Append an ALC list reply only when the command actually changed state (an ALF was emitted).
+        return if (intents.any { it is AlarmIntent.ReportAlf }) intents + AlarmIntent.ReportAlc(snapshot()) else intents
+    }
+
+    /**
      * Advance time. Resolves, in order: (1) expired temporary-silence periods (ACTIVE_SILENCED →
      * ACTIVE_UNACK after [BamTiming.TEMPORARY_SILENCE_MS], audible restarts); (2) due warning
      * escalations (§6.3.5). Silence is processed first so a warning that was silenced reverts to
