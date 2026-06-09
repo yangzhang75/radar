@@ -1,5 +1,8 @@
 package com.shipradar.halofeed
 
+/** What the process does: generate live, generate+record to a file, or replay a recorded file. */
+enum class FeedMode { LIVE, RECORD, REPLAY }
+
 /**
  * Generator configuration. All values are overridable from the command line as `--key=value`
  * (and `--doppler` as a bare flag). See [parse] for the accepted keys.
@@ -25,6 +28,29 @@ data class FeedConfig(
     val iface: String? = null,
     /** Number of full 4096-spoke scans to emit; 0 = run forever. */
     val scans: Int = 0,
+    // --- W5-D: multi-channel + record/replay ---
+    /** LIVE (default), RECORD (live + write [file]), or REPLAY ([file]). */
+    val mode: FeedMode = FeedMode.LIVE,
+    /** Recording file path; required for RECORD/REPLAY. */
+    val file: String? = null,
+    /** Emit image (Spoke) packets to 236.6.7.8:6678. */
+    val emitImage: Boolean = true,
+    /** Emit 01C4 mode-status packets to 236.6.7.9:6679. */
+    val emitStatus: Boolean = true,
+    /** Emit placeholder target packets to 236.6.7.18:6688 (TODO 待协议). */
+    val emitTarget: Boolean = true,
+    /** Emit own-ship NMEA-0183 to the 61162-450 groups. */
+    val emitOwnship: Boolean = true,
+    /** Status packet period (s). */
+    val statusPeriodSec: Double = 2.0,
+    /** Target packet period (s). */
+    val targetPeriodSec: Double = 1.0,
+    /** Own-ship update period (s). */
+    val ownshipPeriodSec: Double = 1.0,
+    /** Number of synthetic targets. */
+    val targetCount: Int = 3,
+    /** REPLAY: reproduce original inter-packet timing (false = as fast as possible). */
+    val paced: Boolean = true,
 ) {
     init {
         require(rpm > 0) { "rpm must be > 0" }
@@ -83,6 +109,20 @@ data class FeedConfig(
                     "ttl" -> cfg.copy(ttl = value!!.toInt())
                     "iface" -> cfg.copy(iface = value)
                     "scans" -> cfg.copy(scans = value!!.toInt())
+                    "mode" -> cfg.copy(mode = FeedMode.valueOf(value!!.uppercase()))
+                    "file" -> cfg.copy(file = value)
+                    "record" -> cfg.copy(mode = FeedMode.RECORD, file = value ?: cfg.file)
+                    "replay" -> cfg.copy(mode = FeedMode.REPLAY, file = value ?: cfg.file)
+                    "no-image" -> cfg.copy(emitImage = false)
+                    "no-status" -> cfg.copy(emitStatus = false)
+                    "no-target" -> cfg.copy(emitTarget = false)
+                    "no-ownship" -> cfg.copy(emitOwnship = false)
+                    "targets" -> cfg.copy(targetCount = value!!.toInt())
+                    "statusPeriod" -> cfg.copy(statusPeriodSec = value!!.toDouble())
+                    "targetPeriod" -> cfg.copy(targetPeriodSec = value!!.toDouble())
+                    "ownshipPeriod" -> cfg.copy(ownshipPeriodSec = value!!.toDouble())
+                    "paced" -> cfg.copy(paced = value?.toBooleanStrict() ?: true)
+                    "no-paced" -> cfg.copy(paced = false)
                     "help", "h" -> throw HelpRequested
                     else -> throw IllegalArgumentException("unknown option --$key")
                 }
@@ -102,6 +142,16 @@ Options (--key=value):
   --ttl=1               multicast TTL (raise for routed/SD-WAN segments)
   --iface=en0           outgoing network interface (default: OS route)
   --scans=0             number of full 4096-spoke scans (0 = forever)
+Channels (default all on):
+  --no-image            do not emit image spokes
+  --no-status           do not emit 01C4 status
+  --no-target           do not emit placeholder targets (TODO 待协议)
+  --no-ownship          do not emit own-ship NMEA-0183
+  --targets=3           number of synthetic targets
+  --statusPeriod=2.0    status period (s)   --targetPeriod=1.0   --ownshipPeriod=1.0
+Record / replay:
+  --record=feed.bin     run live AND record every datagram to feed.bin
+  --replay=feed.bin     replay a recording (any channel); --no-paced = as fast as possible
   --help"""
     }
 
