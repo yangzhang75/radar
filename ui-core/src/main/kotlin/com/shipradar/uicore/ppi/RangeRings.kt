@@ -21,8 +21,10 @@ data class RangeRing(val radiusPx: Double, val rangeNm: Double, val separationNm
  *  - Range rings shall always be centred at the CCRP (the projection centre).
  *  - System accuracy within 1 % of the max range of the scale in use or 30 m, whichever is greater
  *    — satisfied here because ring radii are computed analytically (exact) from the scale.
- *  - Range-ring presentation also references IEC 62288; the exact IEC 62288 clause is
- *    TODO(待标准): the IEC 62288 PDF is not in the standards library (see DISP-03 note).
+ *  - Mirrored by IEC 62288 Ed.2 §5.9.2.1 (MSC191/7.1.4): "if range rings are displayed, the range
+ *    ring scale shall be indicated"; spaced into equal divisions (two to six rings for NM, up to five
+ *    for metric); accuracy within 1 % of max range or 30 m; "shall always be centred at the CCRP";
+ *    a means to enable/disable shall be provided. Presentation per Annex A (§5.9.2.2 a).
  */
 object RangeRings {
 

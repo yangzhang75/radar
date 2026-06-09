@@ -85,8 +85,12 @@ object ColorMapper {
      * Peak (sample 15) echo basic colour per palette. IEC 62288 §5.4.1.1 (MSC191/6.3.1) requires
      * "a basic colour that provides optimum contrast" and permits the colour to "be different for
      * operation under different ambient light conditions (day, dusk and night)". Each hue below is a
-     * member of the IEC 62388 §7.3.1 named set; peak luminance decreases day → dusk → night to
-     * preserve dark adaptation (Table 1; §7.2.1).
+     * member of the IEC 62388 §7.3.1 named set; peak luminance decreases day → dusk → night per the
+     * IEC 62288 §4.5 / §7.2 dimming mechanism (Table 1 ambient day 200 / dusk 10 cd/m² / night
+     * darkness; §7.2.1 adjustment range must maintain dark adaptation at night). Realised relative
+     * peak luminance ≈ day 1.00 / dusk 0.51 / night 0.11 (Rec.709), locked by ColorMapperTest. The
+     * shared hue-preserving dimming primitive is [PaletteDimming]; these echo peaks additionally
+     * warm-shift the hue (yellow→orange→red) for night vision, so they are not pure dim() outputs.
      *
      * - DAY  : yellow  — high-contrast basic colour on a dark radar background.
      * - DUSK : orange  — reduced luminance; distinct from the alert red of §4.7.2.1.
