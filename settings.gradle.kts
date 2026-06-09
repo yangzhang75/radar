@@ -25,5 +25,6 @@ include(":tools:halofeed") // HALO fake-data generator (pure JVM, sends multicas
 
 // --- Android modules (thin shells; enable after Android SDK install + minSdk decision §6 #3) ---
 // Uncomment once local.properties points at a valid Android SDK and target API level is decided:
-// include(":comms")      // Foreground Service wiring comms-core to real sockets/lifecycle
+// SDK now present (local.properties -> sdk.dir); :comms enabled for T1.1 (Foreground Service wiring).
+include(":comms")      // Foreground Service wiring comms-core to real sockets/lifecycle
 // include(":app")        // Compose HMI + Canvas/GL render surface + input
