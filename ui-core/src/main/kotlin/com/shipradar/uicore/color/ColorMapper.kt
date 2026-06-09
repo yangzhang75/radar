@@ -38,10 +38,13 @@ import com.shipradar.contract.SampleEncoding
  * ## What IEC 62288 still does NOT pin (remaining `TODO(待标准)` — see delivery report)
  *
  *  - **Exact chromaticity / ARGB** of the radar-echo basic colour. §5.4.1.1 says only "a basic colour
- *    that provides optimum contrast"; §4.5.1 / §4.6.2 delegate exact colour-table chromaticity to the
- *    **IHO S-52 Presentation Library** (or an equivalent set), which is *not* in the project standards
- *    library. The per-palette ARGB below remain a manufacturer / S-52 choice — standard-*compliant*
- *    (named set, dark bg, ≥1:2 distinguishable, day>dusk>night), not standard-*numeric*.
+ *    that provides optimum contrast"; §4.5.1 (and the §5.4.1.1 NOTE) delegate exact colour-table
+ *    chromaticity to the **IHO S-52 Presentation Library** (or an equivalent set), which is *not* in
+ *    the project standards library. (§4.6.2 / §5.5.1.1 + Annex A delegate *symbols*, not echo colour.)
+ *    The per-palette ARGB below remain a manufacturer / S-52 choice — standard-*compliant* (named set,
+ *    dark bg, ≥1:2 distinguishable, day>dusk>night), not standard-*numeric*. Confirmed by §4.5.2(e) /
+ *    §5.4.1.2: the colour conformance test is observation + analytical check vs IHO S-52, i.e. 62288
+ *    specifies no numeric ARGB (W4-C audit).
  *  - **Doppler approaching/receding hues.** 62288 has no Doppler clause at all; §5.4.1.1 authorises
  *    the *mechanism* ("tones of other basic colours") but not the magenta/green choice → vendor HMI.
  *  - **Exact per-level luminance steps.** §5.4.1.1 pins "tones of the same basic colour" but gives no
@@ -92,8 +95,8 @@ object ColorMapper {
      *   (the alert red of §4.7.2.1); 0x780000 (R=120) is ≥1:2 dimmer than a saturated alert red
      *   0xFF0000 (§4.4.1.1 NOTE 5 — visually distinguishable = luminance ratio ≥1:2).
      *
-     * TODO(待标准: IHO S-52) — exact chromaticity is delegated by §4.5.1/§4.6.2 to the IHO S-52
-     * Presentation Library (not yet in the standards library); these ARGB are compliant placeholders.
+     * TODO(待标准: IHO S-52) — exact chromaticity is delegated by §4.5.1 (+ §5.4.1.1 NOTE) to the IHO
+     * S-52 Presentation Library (not yet in the standards library); these ARGB are compliant placeholders.
      */
     private val amplitudePeak: Map<Palette, Int> = mapOf(
         // 0xAARRGGBB, alpha = full at peak.
