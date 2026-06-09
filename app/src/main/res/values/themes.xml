@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Dark, non-reflecting base theme. IEC 62288 Ed.2 §5.4.1.1: "for radar displays a dark
+      non-reflecting background shall be used" (under every ambient condition). The PPI surface
+      paints its own dark background; this theme keeps system surfaces dark behind it.
+    -->
+    <style name="Theme.ShipRadar" parent="android:Theme.Material.NoActionBar.Fullscreen">
+        <item name="android:windowBackground">@android:color/black</item>
+    </style>
+</resources>

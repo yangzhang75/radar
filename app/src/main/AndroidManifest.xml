@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application
+        android:label="Ship Radar"
+        android:supportsRtl="false"
+        android:theme="@style/Theme.ShipRadar"
+        android:hardwareAccelerated="true">
+
+        <!--
+          Demo host for the PPI render surface. Landscape-locked (marine console orientation) and
+          fullscreen. The real HMI (menus, alarm bar, controls) is T2.9 / T2.4; this Activity only
+          drives PpiView with fake spokes so the render surface can be previewed standalone.
+        -->
+        <activity
+            android:name="com.shipradar.app.ppi.PpiDemoActivity"
+            android:exported="true"
+            android:screenOrientation="landscape"
+            android:configChanges="orientation|screenSize|keyboardHidden">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
