@@ -9,10 +9,12 @@ import com.shipradar.uicore.ppi.PpiOrientation
  * (own-ship heading/COG) feed it in. Pure values — no Android types.
  *
  * @param rangeScaleNm selected range scale, NM (one of the mandatory scales — IEC 62388 §9.4.1.1).
- * @param orientation display orientation (head-up / north-up / course-up — IEC 62388 §3).
+ * @param orientation display orientation (head-up §3.32 / north-up §3.44 / course-up §3.17). All
+ *   three SHALL be provided — IEC 62388 §10.4.4.1 (MSC.192/5.20.2).
  * @param palette ambient HMI palette (day/dusk/night — IEC 62288 §4.5.1, Table 1).
  * @param headingDeg own-ship heading, deg true. Required for NORTH_UP/COURSE_UP; null ⇒ render
- *   falls back to HEAD_UP (unstabilised — correct behaviour on gyro loss).
+ *   falls back to HEAD_UP — the mandated fallback "when heading-sensor data becomes unavailable"
+ *   (IEC 62388 §10.4.4.1, MSC.192/5.20.2). See [effectiveOrientation].
  * @param courseDeg own-ship course over ground, deg true. Required for COURSE_UP.
  * @param antennaRpm antenna rotation rate (rev/min), used only to bound the range-change blanking
  *   budget to ≤ 1 scan (DISP-02, IEC 62388 §9.4.1.2(d)).
@@ -34,7 +36,12 @@ data class PpiConfig(
     val showBearingScale: Boolean = true,
     val showHeadingLine: Boolean = true,
 ) {
-    /** The orientation actually usable given available sensors (falls back to HEAD_UP on gyro loss). */
+    /**
+     * The orientation actually usable given available sensors. Azimuth-stabilised modes (north-up,
+     * course-up) need a heading (course-up also a course); when the data is missing this falls back
+     * to HEAD_UP — the fallback mandated by IEC 62388 §10.4.4.1 (MSC.192/5.20.2) "when heading-sensor
+     * data becomes unavailable". HEAD_UP itself always passes through.
+     */
     val effectiveOrientation: PpiOrientation
         get() = when (orientation) {
             PpiOrientation.HEAD_UP -> PpiOrientation.HEAD_UP

@@ -17,7 +17,7 @@ import kotlin.math.atan2
  *  - Azimuth: degrees, **0 = own ship's bow (head)**, increasing **clockwise** (matches
  *    [com.shipradar.contract.EchoSpoke.azimuthDeg] and the HALO spoke encoding).
  *  - Screen: pixel space with **+x right, +y down** (the usual raster convention). The PPI centre
- *    is the CCRP (consistent common reference point, IEC 62388 §7.x). "Up" on screen is −y.
+ *    is the CCRP (consistent common reference point, IEC 62388 §3.12). "Up" on screen is −y.
  *  - Screen angle: degrees clockwise from screen-up. 0 = up, 90 = right (+x), 180 = down, 270 = left.
  */
 
@@ -32,12 +32,16 @@ data class PolarPosition(val azimuthDeg: Double, val rangeFraction: Double)
  *
  * Definitions per IEC 62388 §3 (IMO MSC.192(79) App.2):
  *  - [HEAD_UP]   §3.32: own ship's heading oriented "up"; bearing scale top shows relative 000°.
- *  - [NORTH_UP]  §3.x (north-up): north fixed vertically above CCRP; azimuth-stabilised.
- *  - [COURSE_UP] §3.17: own ship's course (COG) vertically above CCRP; azimuth-stabilised.
+ *  - [NORTH_UP]  §3.44: north fixed vertically above the CCRP; azimuth-stabilised.
+ *  - [COURSE_UP] §3.17: own ship's course (COG) vertically above the CCRP; azimuth-stabilised.
  *
- * NORTH_UP and COURSE_UP are azimuth-stabilised and therefore require a valid heading (and, for
- * COURSE_UP, a course). On heading-sensor loss the render layer must fall back to HEAD_UP
- * (unstabilised) — see [resolveDisplayRotationDeg].
+ * Availability: IEC 62388 §10.4.4.1 (MSC.192/5.20.2) — north-up and course-up SHALL be provided;
+ * head-up SHALL be provided both as a selectable mode and **as the fallback when heading-sensor
+ * data becomes unavailable**. NORTH_UP and COURSE_UP are azimuth-stabilised and therefore require a
+ * valid heading (and, for COURSE_UP, a course); on heading loss the render layer falls back to
+ * HEAD_UP (unstabilised) — see [resolveDisplayRotationDeg] and `PpiConfig.effectiveOrientation`.
+ * (§10.4.4.1 / MSC.192/5.20.3 also requires a *permanent* indication of the mode in use — owned by
+ * the data bar / framework layer, not this geometry.)
  */
 enum class PpiOrientation { HEAD_UP, NORTH_UP, COURSE_UP }
 
