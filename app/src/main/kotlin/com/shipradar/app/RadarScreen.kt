@@ -1,6 +1,5 @@
 package com.shipradar.app
 
-import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -99,22 +98,17 @@ fun RadarScreen() {
                     ),
                 )
             },
+            // ControlPanel already bundles ModeControls (range/motion/orientation) + its own
+            // width(360) + internal vertical scroll, so it goes straight into the side slot.
             side = {
                 ControlPanel(
                     status = status,
                     controller = PreviewController,
-                    modifier = Modifier.width(200.dp),
                     display = display,
                     onDisplayChange = { display = it },
                 )
             },
-            modes = {
-                ModeControls(
-                    display = display,
-                    controller = PreviewController,
-                    onDisplayChange = { display = it },
-                )
-            },
+            // modes slot intentionally empty — controls all live in the side panel; nothing floats over the PPI.
             center = { PpiSurface(spokes = spokes, config = PpiConfig(rangeScaleNm = display.rangeScaleNm)) },
             overlay = { TargetOverlay(targets = targets, ownShip = ownShipFlow, rangeScaleNm = display.rangeScaleNm) },
             alarms = { AlarmBar(uiState = alarms, controller = NoopAlarmController) },
