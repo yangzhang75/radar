@@ -66,13 +66,16 @@ interface AutoAcquisition {
  * Zone-based auto-acquisition placeholder: a plot is acquired if it lies inside at least one active
  * (non-suppress) [AcquisitionZone] and inside **no** suppressed zone, subject to the category's radar
  * tracked-target capacity ([EquipmentCategory.radarTracked]). Plots faster than [MAX_REL_SPEED_KN] are
- * skipped (A.823 §3.2.1 covers relative speeds up to 100 kn).
+ * skipped (A.823 §3.2.1 / GB 11711-2002 §4.2.2.1 cover relative speeds up to 100 kn; suppressed
+ * acquisition areas are §3.2.1 / §4.2.2.1, symbol 2).
  *
- * TODO(待标准 A.823 §3.2.2 / §3.3.2): the *selection criteria* among eligible plots — which IMO requires
- * be described to the user and which govern real auto-acquisition quality — are not yet defined and need
- * the radar front-end's parameters:
+ * TODO(待标准 A.823 §3.2.2/§3.3 / GB §4.2.2.2/§4.2.3): the *selection criteria* among eligible plots —
+ * which IMO/GB require be described to the user and which govern real auto-acquisition quality — are not
+ * fixed numerically by A.823/GB 11711 and are inherently multi-scan (out of scope for this single-frame
+ * geometry). They need the radar front-end's parameters:
  *   - minimum target size / SNR / plot-quality gate before a plot is acquirable,
- *   - tentative→firm track promotion rule (A.823 §3.3.3 "5 out of 10 scans"),
+ *   - tentative→firm track promotion rule (A.823 §3.3.3 "5 out of 10 scans"; GB §4.2.3.1 acquiring
+ *     symbol within 3 s, stable tracking within 20 scan periods),
  *   - priority when more eligible plots than free capacity (nearest? fastest-closing? lowest TCPA?),
  *   - guard-zone vs auto-acquisition-zone distinction (the guard-zone alarm is A.823 §3.5.1).
  * List these in the delivery report; here we acquire all eligible plots up to capacity (nearest-first).

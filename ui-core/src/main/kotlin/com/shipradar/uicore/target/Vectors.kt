@@ -21,11 +21,11 @@ data class MotionVector(
 }
 
 /**
- * True/relative target vector geometry (IMO A.823(19) §3.4.6).
+ * True/relative target vector geometry (IMO A.823(19) §3.4.6 / GB 11711-2002 §4.2.4.6).
  *
- * §3.4.6.1: a vector-only ARPA shall offer **both** true and relative vectors.
- * §3.4.6.3: displayed vectors shall be **time-adjustable** — hence vector time is a parameter.
- * §3.4.6.4: a positive indication of the vector time-scale in use shall be given (UI concern).
+ * §3.4.6.1 / §4.2.4.6 a): a vector-only ARPA shall offer **both** true and relative vectors.
+ * §3.4.6.3 / §4.2.4.6 c): displayed vectors shall be **time-adjustable** — hence vector time is a parameter.
+ * §3.4.6.4 / §4.2.4.6 d): a positive indication of the vector time-scale in use shall be given (UI concern).
  *
  * Both endpoints are in the own-ship-centred NE plane so the render layer (T2.1 PPI) can map them
  * straight to screen with its polar→screen transform.
