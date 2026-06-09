@@ -26,7 +26,14 @@ internal class SentenceFrame private constructor(
     }
 
     companion object {
-        /** §7.3.1: maximum 82 characters including "$"/"!" and <CR><LF>. */
+        /**
+         * §7.3.1: a sentence is at most 82 characters total — "a maximum of 79 characters between
+         * the starting delimiter "$"/"!" and the terminating delimiter <CR><LF>", i.e. the trimmed
+         * line (incl. "$" + "*hh", excl. <CR><LF>) is ≤ 80. We apply 82 as a **lenient** ceiling on
+         * the trimmed line: a compliant talker never exceeds 80, and accepting the (impossible-from-
+         * compliant-kit) 81–82 case is deliberately preferred over risking dropping valid navigation
+         * data on a safety path — over-length junk from faulty kit still fails the §7.2.4 checksum.
+         */
         const val MAX_SENTENCE_LENGTH = 82
 
         /**
