@@ -8,13 +8,20 @@ package com.shipradar.comms.iec61162
  * its internal layout (message type, MMSI, position, COG/SOG, heading, …) is defined by
  * **ITU-R M.1371-5 §3.3**, not by 61162-1.
  *
- * Implemented now (T1.5 mandatory scope — MMSI / lat / lon / COG / SOG / heading):
+ * Implemented (MMSI / lat / lon / COG / SOG / heading — the navigationally-mappable fields):
  *  - Types 1, 2, 3  — Class A position report (ITU-R M.1371-5 §3.3, Message 1/2/3)
  *  - Type 18        — Class B position report (ITU-R M.1371-5 §3.3, Message 18)
+ *  - Type 19        — Extended Class B position report (Message 19): the position block shares the
+ *                     exact bit layout of Message 18 (bits 0-132), so it decodes through the same path.
  *
- * Deferred (framework + TODO): type 5 static/voyage data, type 19 (Class B extended), type 24
- * (static data report), type 21 (aids-to-navigation), addressed/binary messages, and multi-slot
- * communication-state fields. See [decodePositionReport] return value (null) for unhandled types.
+ * Deferred (framework + TODO) — see [messageType] / [decodePositionReport] (returns null):
+ *  - **Static/voyage data: type 5 (Class A) and type 24 (Class B A/B parts)** — name, call sign,
+ *    IMO number, dimensions, draught, destination. NOT decoded because the frozen contract
+ *    ([com.shipradar.contract.TrackedTarget]) has no static-attribute fields to carry them; decoding
+ *    them needs a contract extension (flagged in the W4-F delivery report).
+ *    TODO(待标准: ITU-R M.1371-5 §3.3 Message 5/24) + contract静态字段.
+ *  - type 21 (aids-to-navigation), type 27 (long-range position — different layout),
+ *    addressed/binary messages, and multi-slot communication-state fields.
  */
 internal object AisPayloadDecoder {
 
@@ -48,8 +55,11 @@ internal object AisPayloadDecoder {
         return BitReader(bits, valid)
     }
 
+    /** The ITU-R M.1371-5 message type (bits 0-5), or null if the bitstream is too short. */
+    fun messageType(reader: BitReader): Int? = if (reader.size < 6) null else reader.uint(0, 6)
+
     /**
-     * Decode a Class A (1/2/3) or Class B (18) position report from a de-armoured payload.
+     * Decode a Class A (1/2/3) or Class B (18/19) position report from a de-armoured payload.
      * Returns null for any other message type (deferred) or a too-short bitstream.
      */
     fun decodePositionReport(reader: BitReader): AisPositionFields? {
@@ -57,7 +67,8 @@ internal object AisPayloadDecoder {
         val type = reader.uint(0, 6)
         return when (type) {
             1, 2, 3 -> decodeClassA(reader, type)
-            18 -> decodeClassB(reader, type)
+            // Message 18 (Class B) and Message 19 (Extended Class B) share the position-block layout.
+            18, 19 -> decodeClassB(reader, type)
             else -> null
         }
     }
@@ -82,7 +93,7 @@ internal object AisPayloadDecoder {
         return AisPositionFields(
             messageType = type,
             mmsi = r.uint(8, 30).toLong(),
-            navStatus = null, // not present in Class B (ITU-R M.1371-5 §3.3, Message 18)
+            navStatus = null, // not present in Class B (ITU-R M.1371-5 §3.3, Message 18/19)
             rotDegMin = null,
             sogKn = decodeSog(r.uint(46, 10)),
             longitude = decodeLon(r.int(57, 28)),

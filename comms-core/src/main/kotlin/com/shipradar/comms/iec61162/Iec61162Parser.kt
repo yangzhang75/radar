@@ -233,8 +233,20 @@ class Iec61162Parser {
                 "multi-fragment AIS ($total fragments) — reassemble via AisReassembler (T1.6)",
             )
         }
-        val reader = AisPayloadDecoder.unarmor(payload, fillBits) ?: return null
-        val fields = AisPayloadDecoder.decodePositionReport(reader) ?: return null
+        // §7.3.4/§8.2 six-bit de-armour; a corrupt encapsulated payload (valid checksum but bad
+        // 6-bit chars / fill count) is reported distinctly rather than as "unknown formatter".
+        val reader = AisPayloadDecoder.unarmor(payload, fillBits)
+            ?: return ParsedSentence.Unsupported(f.talker, f.formatter, "AIS payload de-armour failed (§7.3.4/§8.2 6-bit)")
+        val fields = AisPayloadDecoder.decodePositionReport(reader)
+        if (fields == null) {
+            // Recognised AIS sentence, but this message type is not a decodable position report.
+            val type = AisPayloadDecoder.messageType(reader)
+            return ParsedSentence.Unsupported(
+                f.talker, f.formatter,
+                "AIS message type $type not decoded (only 1/2/3/18/19 position reports) — " +
+                    "TODO(待标准: ITU-R M.1371-5 §3.3 type 5/24 static; needs contract static fields)",
+            )
+        }
         return if (ownVessel) {
             // VDO: own vessel -> OwnShipData.
             ownShip(f, OwnShipData(
