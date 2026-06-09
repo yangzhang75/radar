@@ -55,7 +55,8 @@ class AlarmColorsTest {
     @Test
     fun `night alarm red is at least 1 to 2 brighter than night echo red`() {
         val alarm = lum(AlarmColors.colorFor(AlarmPriority.ALARM, Palette.NIGHT))
-        val echo = lum(ColorMapper.amplitudeColor(ColorMapper.SAMPLE_APPROACHING, Palette.NIGHT))
+        // strongest amplitude echo (level LEVELS-1); amplitudeColor is amplitude-only (not Doppler).
+        val echo = lum(ColorMapper.amplitudeColor(ColorMapper.LEVELS - 1, Palette.NIGHT))
         assertTrue(alarm >= 2.0 * echo, "night alarm($alarm) must be ≥1:2 brighter than night echo($echo)")
     }
 

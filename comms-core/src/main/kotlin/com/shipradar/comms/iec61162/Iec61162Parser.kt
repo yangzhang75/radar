@@ -439,7 +439,8 @@ class Iec61162Parser {
         // TODO(待标准: 61162-1 §8.3.113) transverse drift (field 5) + STW (field 1) — no OwnShipData field.
         return ownShip(f, OwnShipData(
             sogKn = longitudinalGround,
-            sourceValidity = mapOf(SensorKind.COG_SOG to groundValid, SensorKind.SPEED_LOG to groundValid),
+            // VBW writes no speed-log (STW) value, so only ground/COG-SOG validity is asserted (not SPEED_LOG).
+            sourceValidity = mapOf(SensorKind.COG_SOG to groundValid),
         ))
     }
 
