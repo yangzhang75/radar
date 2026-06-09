@@ -37,4 +37,10 @@ dependencies {
     implementation(libs.compose.ui.graphics)
     implementation(libs.compose.material3)
     implementation(libs.compose.ui.tooling.preview)
+
+    // T2.8 alarm-UI presentation logic is pure JVM and unit-tested here (no device needed).
+    testImplementation(libs.kotlin.test)
 }
+
+// Run the JVM unit tests on the JUnit Platform, matching the pure-JVM core modules.
+tasks.withType<Test>().configureEach { useJUnitPlatform() }
