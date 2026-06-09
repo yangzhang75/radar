@@ -3,17 +3,19 @@
 > 安卓地基已就绪(`main` 上 `./gradlew :app:assembleDebug` 出 APK)。下面每节是一份**粘进对应已有会话**的 prompt。
 > **复用映射**(不要开新会话):
 
-| 任务 | 粘进会话 | 独占目录 |
-|---|---|---|
-| T1.1 服务接线 | **sphenoid-watchmaker** | `comms/` (service) |
-| T2.1r PPI 渲染面 | **vivacious-clover** | `app/ppi/` |
-| T2.3r 目标/航迹绘制 | **few-basin** | `app/target/` |
-| T2.4 量程/模式切换 | **purring-budget** | `app/mode/` |
-| T2.5 交互(触/键/鼠) | **past-freon** | `app/input/` |
-| T2.6 雷达控制台 | **thorn-poppyseed** | `app/control/` |
-| T2.7 数据栏+永久显示 | **rounded-fireplace** | `app/databar/` |
-| T2.8 报警界面 | **carefree-drip** | `app/alarm/` |
-| T2.9 OpenBridge框架 | **absorbed-stetson** | `app/framework/` |
+| 批次 | 任务 | 粘进会话 | 独占目录 |
+|---|---|---|---|
+| **A 骨架(先派)** | T1.1 服务接线 | **sphenoid-watchmaker** | `comms/` (service) |
+| **A 骨架(先派)** | T2.1r PPI 渲染面 | **vivacious-clover** | `app/ppi/` |
+| **A 骨架(先派)** | T2.9 OpenBridge框架+布局 | **absorbed-stetson** | `app/framework/` |
+| B 功能 | T2.3r 目标/航迹绘制 | **few-basin** | `app/target/` |
+| B 功能 | T2.6 控制台(含量程/模式 ←原T2.4) | **thorn-poppyseed** | `app/control/` |
+| B 功能 | T2.5 交互(触/键/鼠) | **past-freon** | `app/input/` |
+| B 功能 | T2.7 数据栏+永久显示 | **rounded-fireplace** | `app/databar/` |
+| B 功能 | T2.8 报警界面 | **carefree-drip** | `app/alarm/` |
+
+> **批次逻辑**:A 是骨架(数据通路/渲染面/外框布局),先派最出效果;B 功能层各自插槽,与 A 并行无返工(都对契约+假数据)。也可一次性全派——接口先行保证不互相阻塞。
+> **闲置会话不空转**(免设备收尾,随时可派):observant-aura/purring-budget/rebel-peach/lead-turkey → 62288 符号图标建模、T2.1 刻度按62288精修、目标 wire 待真机抓包。
 
 ## 通用规则(所有第三波员工)
 1. **复用你被指定的会话**,不要开新会话。新建工作区从 main:`git worktree add ../wt-<任务> -b feat/<任务> main`。
@@ -33,14 +35,11 @@ PPI 回波渲染面:`PpiView(spokes: Flow<EchoSpoke>, …)` 用 **Canvas 或 Ope
 ## T2.3r → 会话 few-basin（目录 `app/target/`）
 目标/航迹叠加层:`TargetOverlay(targets: StateFlow<List<TrackedTarget>>, …)` 在 PPI 之上画雷达目标+AIS符号、矢量、过去航迹、CPA/TCPA 危险高亮。复用 `ui-core.target`。符号/颜色按 IEC 62288/62388(危险目标红色等)。容量≥240 流畅。预览用假目标。
 
-## T2.4 → 会话 purring-budget（目录 `app/mode/`）
-量程/运动/定向切换 UI:`ModeControls(status, controller, …)`。强制量程档 0.25–24NM(用 `MANDATORY_RANGE_SCALES_NM`);相对/真运动;船首向上/北向上/航向向上。当前档常显。下发经 RadarController。引 62388。
-
 ## T2.5 → 会话 past-freon（目录 `app/input/`）
 统一交互层:触屏/键盘/鼠标等价处理——缩放/平移/点选目标/EBL(电子方位线)/VRM(可变距离圈)/平行索引线。输出手势/选择事件供 PPI 与目标层消费(经回调/状态,不直接改它们的包)。CAT1 要求三类输入。
 
-## T2.6 → 会话 thorn-poppyseed（目录 `app/control/`）
-雷达控制台 UI:`ControlPanel(status, controller)` —— 增益/海浪/雨雪/干扰抑制/转速/发射待机/报警圈等,产出 `RadarCommand` 经 RadarController 下发(你熟,T1.3 就是你编的码)。控件英文名/缩写+图标按 IEC 62288/A.278。
+## T2.6(含原 T2.4)→ 会话 thorn-poppyseed（目录 `app/control/`）
+雷达控制台 UI:`ControlPanel(status, controller)` —— ① 发射/待机、增益/海浪/雨雪/干扰抑制/转速/报警圈,产出 `RadarCommand` 经 RadarController 下发(你熟,T1.3 就是你编的码);② **量程/运动/定向切换**(强制量程档 0.25–24NM 用 `MANDATORY_RANGE_SCALES_NM`、相对/真运动、船首/北/航向向上、当前档常显)。控件英文名/缩写+图标按 IEC 62288/A.278。
 
 ## T2.7 → 会话 rounded-fireplace（目录 `app/databar/`）
 数据栏 + **防撞要素永久显示(不得遮挡)**:增益/抑制状态、量程档、运动/定向模式、矢量模式/时间/稳定、主从、各传感器失效指示、本船航向航速位置等。`DataBar(ownShip, status, sensorValidity, …)`。严格按 IEC 62388 §永久显示清单逐项(ALRM-02),引条款。
