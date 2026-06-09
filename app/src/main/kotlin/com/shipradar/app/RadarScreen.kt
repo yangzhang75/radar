@@ -1,35 +1,130 @@
 package com.shipradar.app
 
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.Text
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import com.shipradar.app.alarm.AlarmBar
+import com.shipradar.app.alarm.AlarmPresentation
+import com.shipradar.app.alarm.NoopAlarmController
+import com.shipradar.app.control.ControlPanel
+import com.shipradar.app.control.ModeControls
+import com.shipradar.app.control.RadarDisplaySettings
+import com.shipradar.app.control.MotionMode
+import com.shipradar.app.databar.DataBar
+import com.shipradar.app.databar.MotionMode as DbMotionMode
+import com.shipradar.app.databar.RadarDisplaySettings as DataBarSettings
+import com.shipradar.app.databar.Stabilisation as DbStabilisation
+import com.shipradar.app.databar.VectorMode as DbVectorMode
+import com.shipradar.app.framework.ObTheme
+import com.shipradar.app.framework.OpenBridgeTheme
+import com.shipradar.app.ppi.FakeSpokes
+import com.shipradar.app.ppi.PpiConfig
+import com.shipradar.app.ppi.PpiSurface
+import com.shipradar.app.target.FakeTargets
+import com.shipradar.app.target.TargetOverlay
+import com.shipradar.contract.AlarmEvent
+import com.shipradar.contract.AlarmPriority
+import com.shipradar.contract.AlarmState
+import com.shipradar.contract.MasterSlave
+import com.shipradar.contract.OwnShipData
+import com.shipradar.contract.RadarCommand
+import com.shipradar.contract.RadarController
+import com.shipradar.contract.RadarPowerState
+import com.shipradar.contract.RadarStatus
+import com.shipradar.contract.SensorKind
+import com.shipradar.contract.TrackCommand
+import kotlinx.coroutines.flow.MutableStateFlow
 
 /**
- * Top-level HMI assembly — **OWNED BY THE ORCHESTRATOR**. Feature workers must NOT edit this file
- * or [MainActivity]; they each deliver a self-contained Composable in their own package, and the
- * orchestrator wires it into a slot here as it lands. This keeps the third-wave UI workers
- * file-level non-overlapping.
+ * Top-level HMI assembly — **OWNED BY THE ORCHESTRATOR**. Wires each third-wave worker's self-contained
+ * Composable into the [com.shipradar.app.framework.RadarScaffold] slots. Currently driven by per-module
+ * preview/fake data; swap [PreviewController] + the fake flows for the comms [RadarCommsService]'s
+ * RadarDataBus/RadarController once the service↔UI binding lands.
  *
- * Slot plan (each filled by one worker package; consume data via com.shipradar.contract interfaces
- * + preview data so they develop independently of the T1.1 service wiring):
- *   - center  : com.shipradar.app.ppi      PPI echo render surface          (T2.1r, vivacious-clover)
- *   - overlay : com.shipradar.app.target   target/track overlay             (T2.3r, few-basin)
- *   - chrome  : com.shipradar.app.framework OpenBridge scaffold/theme/bars   (T2.9, absorbed-stetson)
- *   - top     : com.shipradar.app.databar  data bar + permanent display     (T2.7, rounded-fireplace)
- *   - side    : com.shipradar.app.control  radar control panel              (T2.6, thorn-poppyseed)
- *   - modes   : com.shipradar.app.mode     range/motion/orientation switch  (T2.4, purring-budget)
- *   - input   : com.shipradar.app.input    touch/key/mouse + EBL/VRM        (T2.5, past-freon)
- *   - alarms  : com.shipradar.app.alarm    BAM alarm UI                     (T2.8, carefree-drip)
- *
- * As each FooView lands, the orchestrator replaces the placeholder below with the real composition.
+ * Feature workers must NOT edit this file or [MainActivity].
  */
 @Composable
 fun RadarScreen() {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        // TODO(orchestrator): compose framework scaffold + PPI + overlays + bars as workers deliver.
-        Text("Ship Radar — HMI assembly (slots fill in as third-wave workers land)")
+    // Hoisted display state so the control/mode panels actually drive the PPI + data bar.
+    var display by remember { mutableStateOf(RadarDisplaySettings()) }
+
+    // --- fake data sources (orchestrator-owned until T1.1 service binding) -----------------------
+    val spokes = remember { FakeSpokes.continuousSweep() }
+    val targets = remember { MutableStateFlow(FakeTargets.mixedScene()) }
+    val ownShipFlow = remember { MutableStateFlow(FakeTargets.ownShip) }
+    val ownShip = remember {
+        OwnShipData(
+            latitude = 34.4217, longitude = -119.7017,
+            headingDeg = 87.0, headingTrue = true, cogDeg = 90.0, sogKn = 12.4,
+            sourceValidity = mapOf(
+                SensorKind.HEADING to true, SensorKind.POSITION to true,
+                SensorKind.COG_SOG to true, SensorKind.RADAR_LINK to true,
+            ),
+        )
     }
+    val status = remember {
+        RadarStatus(
+            powerState = RadarPowerState.TRANSMIT,
+            rangeMeters = 11112, gainAuto = false, gain = 142,
+            seaLevel = 30, rainLevel = 10, masterSlave = MasterSlave.MASTER,
+        )
+    }
+    val alarms = remember {
+        AlarmPresentation.uiStateOf(
+            listOf(
+                AlarmEvent(3048, AlarmPriority.WARNING, AlarmState.ACTIVE_UNACK, "New target in guard zone", "RADAR"),
+            ),
+        )
+    }
+
+    OpenBridgeTheme(ObTheme.DAY) {
+        com.shipradar.app.framework.RadarScaffold(
+            // TODO(reconcile): control.RadarDisplaySettings and databar.RadarDisplaySettings are
+            // duplicate DTOs from two workers — unify into one shared type (top follow-up). Adapter for now:
+            top = {
+                DataBar(
+                    ownShip = ownShip,
+                    status = status,
+                    settings = DataBarSettings(
+                        orientation = display.orientation,
+                        motionMode = if (display.motion == MotionMode.TRUE) DbMotionMode.TRUE_MOTION else DbMotionMode.RELATIVE_MOTION,
+                        vectorMode = DbVectorMode.RELATIVE,
+                        vectorTimeMin = 6,
+                        stabilisation = DbStabilisation.GROUND,
+                    ),
+                )
+            },
+            side = {
+                ControlPanel(
+                    status = status,
+                    controller = PreviewController,
+                    modifier = Modifier.width(200.dp),
+                    display = display,
+                    onDisplayChange = { display = it },
+                )
+            },
+            modes = {
+                ModeControls(
+                    display = display,
+                    controller = PreviewController,
+                    onDisplayChange = { display = it },
+                )
+            },
+            center = { PpiSurface(spokes = spokes, config = PpiConfig(rangeScaleNm = display.rangeScaleNm)) },
+            overlay = { TargetOverlay(targets = targets, ownShip = ownShipFlow, rangeScaleNm = display.rangeScaleNm) },
+            alarms = { AlarmBar(uiState = alarms, controller = NoopAlarmController) },
+            // input slot: T2.5 RadarInputLayer needs measured centre/radius — wired in next pass.
+        )
+    }
+}
+
+/** No-op command sink for the fake-data assembly; replaced by the comms RadarController. */
+private object PreviewController : RadarController {
+    override fun send(cmd: RadarCommand) {}
+    override fun send(cmd: TrackCommand) {}
 }
