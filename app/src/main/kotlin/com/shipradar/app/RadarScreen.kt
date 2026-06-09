@@ -23,6 +23,7 @@ import com.shipradar.app.demo.DemoFeed
 import com.shipradar.app.demo.SimRadar
 import com.shipradar.app.framework.ObTheme
 import com.shipradar.app.framework.OpenBridgeTheme
+import com.shipradar.app.infopanel.RightInfoPanel
 import com.shipradar.app.ppi.PpiConfig
 import com.shipradar.app.ppi.PpiSurface
 import com.shipradar.app.target.FakeTargets
@@ -89,8 +90,25 @@ fun RadarScreen() {
                 )
             },
             // modes slot intentionally empty — controls all live in the side panel; nothing floats over the PPI.
-            center = { PpiSurface(spokes = router.echoSpokes, config = PpiConfig(rangeScaleNm = display.rangeScaleNm)) },
-            overlay = { TargetOverlay(targets = targets, ownShip = router.ownShip, rangeScaleNm = display.rangeScaleNm) },
+            center = {
+                PpiSurface(
+                    spokes = router.echoSpokes,
+                    config = PpiConfig(
+                        rangeScaleNm = display.rangeScaleNm,
+                        orientation = display.orientation,          // wire the orientation control to echoes
+                        headingDeg = ownShipState.headingDeg,       // so north-up/course-up actually rotate
+                        courseDeg = ownShipState.cogDeg,
+                    ),
+                )
+            },
+            overlay = {
+                TargetOverlay(
+                    targets = targets,
+                    ownShip = router.ownShip,
+                    rangeScaleNm = display.rangeScaleNm,
+                    orientation = display.orientation,              // targets follow the same orientation
+                )
+            },
             alarms = { AlarmBar(uiState = alarms, controller = NoopAlarmController) },
             // T2.5 interaction layer over the PPI: measure the operational area so touch/key/mouse
             // hit-testing (select/EBL/VRM) aligns with the rendered echoes/targets.
@@ -110,6 +128,8 @@ fun RadarScreen() {
                     )
                 }
             },
+            // Standard IMO layout area ③ — own-ship + target data + TT/AIS settings + collision danger.
+            right = { RightInfoPanel(ownShip = ownShipState, targets = targetList, display = display) },
         )
     }
 }

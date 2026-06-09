@@ -1,0 +1,131 @@
+package com.shipradar.app.infopanel
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.shipradar.app.control.RadarDisplaySettings
+import com.shipradar.contract.OwnShipData
+import com.shipradar.contract.TargetSource
+import com.shipradar.contract.TrackedTarget
+import kotlin.math.abs
+
+/**
+ * Right-hand information column — standard IMO CAT 1 layout area ③ (cf. Furuno FAR-2xx8 §1.4):
+ * own-ship read-outs, selected/most-dangerous target data (BRG/RNG/CPA/TCPA/COG/SOG), TT/AIS
+ * settings and a collision-danger banner. Read-only presentation of contract data.
+ */
+@Composable
+fun RightInfoPanel(
+    ownShip: OwnShipData,
+    targets: List<TrackedTarget>,
+    display: RadarDisplaySettings,
+    selected: TrackedTarget? = null,
+    modifier: Modifier = Modifier,
+) {
+    val tt = targets.count { it.source == TargetSource.RADAR_TT }
+    val aisActive = targets.count { it.source == TargetSource.AIS_ACTIVE }
+    val aisSleeping = targets.count { it.source == TargetSource.AIS_SLEEPING }
+    val danger = targets.filter { it.dangerous }
+    val shown = selected ?: danger.firstOrNull() ?: targets.firstOrNull()
+
+    Column(
+        modifier
+            .width(228.dp)
+            .fillMaxHeight()
+            .background(Color(0xFF0B1418))
+            .verticalScroll(rememberScrollState())
+            .padding(8.dp),
+    ) {
+        Section("OWN SHIP") {
+            Field("HDG", ownShip.headingDeg?.let { deg(it) + if (ownShip.headingTrue) " T" else " M" })
+            Field("COG", ownShip.cogDeg?.let { deg(it) + " T" })
+            Field("SOG", ownShip.sogKn?.let { "%.1f kn".format(it) })
+            Field("POSN", latLon(ownShip.latitude, ownShip.longitude))
+        }
+        Section(if (shown != null) "TARGET ${shown.id}${danger.isNotEmpty().ifTrue(" ⚠")}" else "TARGET") {
+            if (shown == null) {
+                Text("No target selected", color = MUTED, fontSize = 11.sp)
+            } else {
+                Field("BRG", deg(shown.bearingDeg) + if (shown.trueBearing) " T" else " R")
+                Field("RNG", "%.2f NM".format(shown.rangeNm))
+                Field("COG", shown.courseDeg?.let { deg(it) })
+                Field("SOG", shown.speedKn?.let { "%.1f kn".format(it) })
+                Field("CPA", shown.cpaNm?.let { "%.2f NM".format(it) }, danger = shown.dangerous)
+                Field("TCPA", shown.tcpaSec?.let { mmss(it) }, danger = shown.dangerous)
+            }
+        }
+        Section("TT / AIS") {
+            Field("RADAR TT", tt.toString())
+            Field("AIS ACT", aisActive.toString())
+            Field("AIS SLEEP", aisSleeping.toString())
+            Field("VECTOR", "${display.vectorTimeMin} min ${display.vectorMode.name.lowercase()}")
+            Field("MOTION", if (display.motion.name == "TRUE") "TM" else "RM")
+            Field("RANGE", "%.2f NM".format(display.rangeScaleNm))
+        }
+        if (danger.isNotEmpty()) {
+            Row(
+                Modifier.fillMaxWidth().padding(top = 8.dp).background(Color(0xFF7A1F1F)).padding(6.dp),
+            ) {
+                Text("DANGER OF COLLISION", color = Color(0xFFFFE0E0), fontWeight = FontWeight.Bold, fontSize = 12.sp)
+            }
+        }
+    }
+}
+
+private val MUTED = Color(0xFF7FA6B3)
+private val FG = Color(0xFFE6F2F5)
+private val DANGER_FG = Color(0xFFFF5252)
+
+@Composable
+private fun Section(title: String, content: @Composable () -> Unit) {
+    Text(
+        title,
+        color = Color(0xFF9FC2CE),
+        fontSize = 10.sp,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier.padding(top = 10.dp, bottom = 2.dp),
+    )
+    content()
+}
+
+@Composable
+private fun Field(label: String, value: String?, danger: Boolean = false) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 1.dp)) {
+        Text(label, color = MUTED, fontSize = 11.sp, modifier = Modifier.width(74.dp))
+        Text(
+            value ?: "---",
+            color = if (danger) DANGER_FG else FG,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Bold,
+            fontFamily = FontFamily.Monospace,
+        )
+    }
+}
+
+private fun deg(d: Double): String = "%05.1f°".format((d % 360 + 360) % 360)
+private fun mmss(sec: Double): String {
+    val s = abs(sec).toInt(); return "%s%02d:%02d".format(if (sec < 0) "-" else "", s / 60, s % 60)
+}
+private fun latLon(lat: Double?, lon: Double?): String? {
+    if (lat == null || lon == null) return null
+    fun fmt(v: Double, pos: String, neg: String): String {
+        val h = if (v >= 0) pos else neg; val a = abs(v); val d = a.toInt(); val m = (a - d) * 60
+        return "%d°%05.2f'%s".format(d, m, h)
+    }
+    return fmt(lat, "N", "S") + " " + fmt(lon, "E", "W")
+}
+private fun Boolean.ifTrue(s: String) = if (this) s else ""

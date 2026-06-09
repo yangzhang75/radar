@@ -52,12 +52,17 @@ fun RadarScaffold(
     overlay: @Composable BoxScope.() -> Unit = {},
     /** Touch / key / EBL-VRM interaction layer (T2.5), topmost over [center] — gets [BoxScope]. */
     input: @Composable BoxScope.() -> Unit = {},
+    /**
+     * Right-hand information column (standard IMO layout area ③, cf. Furuno FAR-2xx8 §1.4): own-ship
+     * read-outs, selected-target (TT/AIS) data, TT/AIS settings, collision-danger. Sized by content.
+     */
+    right: @Composable () -> Unit = {},
 ) {
     val c = OpenBridge.colors
     Column(modifier = modifier.fillMaxSize().background(c.operationalBackground)) {
         // Top permanent data bar.
         top()
-        // Middle band: control panel beside the operational area.
+        // Middle band: control panel | operational area | right info column.
         Row(Modifier.weight(1f).fillMaxHeight()) {
             side()
             Box(
@@ -72,6 +77,7 @@ fun RadarScaffold(
                 input()
                 Box(Modifier.align(Alignment.TopEnd).padding(8.dp)) { modes() }
             }
+            right()
         }
         // Bottom alert bar.
         alarms()
