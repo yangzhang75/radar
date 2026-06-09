@@ -1,19 +1,23 @@
 package com.shipradar.app
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.platform.LocalDensity
 import com.shipradar.app.alarm.AlarmBar
 import com.shipradar.app.alarm.AlarmPresentation
 import com.shipradar.app.alarm.NoopAlarmController
 import com.shipradar.app.control.ControlPanel
-import com.shipradar.app.control.ModeControls
-import com.shipradar.app.control.RadarDisplaySettings
 import com.shipradar.app.control.MotionMode
+import com.shipradar.app.control.RadarDisplaySettings
+import com.shipradar.app.input.RadarInputLayer
 import com.shipradar.app.databar.DataBar
 import com.shipradar.app.databar.MotionMode as DbMotionMode
 import com.shipradar.app.databar.RadarDisplaySettings as DataBarSettings
@@ -55,6 +59,7 @@ fun RadarScreen() {
     // --- fake data sources (orchestrator-owned until T1.1 service binding) -----------------------
     val spokes = remember { FakeSpokes.continuousSweep() }
     val targets = remember { MutableStateFlow(FakeTargets.mixedScene()) }
+    val targetList by targets.collectAsState()
     val ownShipFlow = remember { MutableStateFlow(FakeTargets.ownShip) }
     val ownShip = remember {
         OwnShipData(
@@ -112,6 +117,24 @@ fun RadarScreen() {
             center = { PpiSurface(spokes = spokes, config = PpiConfig(rangeScaleNm = display.rangeScaleNm)) },
             overlay = { TargetOverlay(targets = targets, ownShip = ownShipFlow, rangeScaleNm = display.rangeScaleNm) },
             alarms = { AlarmBar(uiState = alarms, controller = NoopAlarmController) },
+            // T2.5 interaction layer over the PPI: measure the operational area so touch/key/mouse
+            // hit-testing (select/EBL/VRM) aligns with the rendered echoes/targets.
+            input = {
+                BoxWithConstraints(Modifier.fillMaxSize()) {
+                    val d = LocalDensity.current
+                    val wPx = with(d) { maxWidth.toPx() }
+                    val hPx = with(d) { maxHeight.toPx() }
+                    RadarInputLayer(
+                        center = Offset(wPx / 2f, hPx / 2f),
+                        radiusPx = minOf(wPx, hPx) / 2f,
+                        orientation = display.orientation,
+                        rangeScaleNm = display.rangeScaleNm,
+                        targets = targetList,
+                        ownHeadingDeg = ownShip.headingDeg,
+                        ownCourseDeg = ownShip.cogDeg,
+                    )
+                }
+            },
             // input slot: T2.5 RadarInputLayer needs measured centre/radius — wired in next pass.
         )
     }
