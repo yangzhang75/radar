@@ -101,7 +101,7 @@ fun RadarScreen() {
                     val hPx = with(d) { maxHeight.toPx() }
                     RadarInputLayer(
                         center = Offset(wPx / 2f, hPx / 2f),
-                        radiusPx = minOf(wPx, hPx) / 2f,
+                        radiusPx = com.shipradar.app.ppi.PpiLayout.operationalRadiusPx(wPx, hPx, d.density),
                         orientation = display.orientation,
                         rangeScaleNm = display.rangeScaleNm,
                         targets = targetList,

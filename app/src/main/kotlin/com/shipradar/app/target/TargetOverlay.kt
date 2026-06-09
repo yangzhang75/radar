@@ -74,7 +74,9 @@ fun TargetOverlay(
     val textMeasurer = rememberTextMeasurer()
 
     Canvas(modifier) {
-        val radius = min(size.width, size.height) / 2.0
+        // Use the SHARED operational radius (reserves the bearing-scale margin) so targets align with
+        // PpiView's range rings — NOT min(size)/2, which drew edge targets outside the circle.
+        val radius = com.shipradar.app.ppi.PpiLayout.operationalRadiusPx(size.width, size.height, density).toDouble()
         if (radius <= 0.0) return@Canvas
         val projection = PpiProjection.create(
             center = ScreenPoint(size.width / 2.0, size.height / 2.0),

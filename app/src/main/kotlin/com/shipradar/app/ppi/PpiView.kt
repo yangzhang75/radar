@@ -181,7 +181,7 @@ class PpiView @JvmOverloads constructor(
         // Reserve a ring of margin for the scale ticks + numerals so they are not clipped at the view
         // edge and the operational area genuinely excludes the scale (also keeps the §4.4 operational-
         // area measurement to the echo circle, not the chrome). Margin is tunable with the T2.9 frame.
-        val marginPx = dp(BEARING_SCALE_MARGIN_DP) * 2.0
+        val marginPx = dp(PpiLayout.BEARING_SCALE_MARGIN_DP) * 2.0
         val diameterPx = (DisplaySize.fittedDiameterPx(w.toDouble(), h.toDouble()) - marginPx).coerceAtLeast(1.0)
         radiusPx = (diameterPx / 2.0).toFloat()
 
@@ -363,13 +363,6 @@ class PpiView @JvmOverloads constructor(
 
     companion object {
         private const val TAG = "PpiView"
-
-        /**
-         * Ring of margin (dp) reserved around the operational area for the bearing scale, which IEC
-         * 62388 §9.10.2.1 requires to be OUTSIDE the operational display area. Sized for the 12 dp
-         * major ticks + ~26 dp numerals; tune with the T2.9 framework chrome.
-         */
-        private const val BEARING_SCALE_MARGIN_DP = 30f
 
         /** Range rings / bearing scale colour. TODO(待标准/T2.9): align graphic palette per IEC 62288 §4.5.1. */
         private const val GRAPHIC_COLOR = 0xFF3FA34D.toInt()  // muted green graticule
