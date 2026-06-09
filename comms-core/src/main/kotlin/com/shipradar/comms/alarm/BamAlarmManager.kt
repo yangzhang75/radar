@@ -68,6 +68,26 @@ class BamAlarmManager {
         val config = configOverride ?: existing?.config ?: AlertCatalog.configOf(identifier)
         val current = existing?.state ?: BamAlertState.NORMAL
 
+        // W4-E audit fix: re-raising a condition that is *already active* (and not merely
+        // rectified-and-recurring) is not an operator command — it is the alert source re-asserting an
+        // unchanged condition. Treat it as an idempotent refresh (re-emit ALF, no state change, timers
+        // preserved) instead of an illegal transition that would emit a spurious ARC. RECTIFIED_UNACK
+        // is excluded: there the condition had cleared, so a fresh raise is a genuine recurrence and is
+        // routed through the state machine (RECTIFIED_UNACK --RAISE--> ACTIVE_UNACK) below.
+        if (existing != null &&
+            current != BamAlertState.NORMAL &&
+            current != BamAlertState.RECTIFIED_UNACK
+        ) {
+            val refreshed = existing.copy(
+                title = text ?: existing.title,
+                source = source.ifEmpty { existing.source },
+                config = config,
+                lastChangeMillis = nowMillis,
+            )
+            entries[key] = refreshed
+            return emitFor(refreshed, previous = current, cause = AlarmEventType.RAISE, nowMillis = nowMillis)
+        }
+
         return when (val r = AlarmStateMachine.next(priority, current, AlarmEventType.RAISE, config)) {
             is TransitionResult.Accepted -> {
                 val raisedAt = if (existing == null || existing.state == BamAlertState.NORMAL) nowMillis else existing.raisedAtMillis
@@ -103,6 +123,14 @@ class BamAlarmManager {
         val key = Key(identifier, instance)
         val entry = entries[key]
             ?: return listOf(AlarmIntent.RefuseAcn(identifier, instance, event, "no active alert $identifier/$instance"))
+
+        // W4-E audit fix (IEC 62923-1 §6.3.4): "a repeated activation of the temporary silence
+        // command does not prevent the start of the audible signal after 30 s". A silence command on
+        // an already-silenced alert is therefore accepted (re-emit, no ARC) but must NOT restart the
+        // 30 s timer — so we re-emit without touching silencedAtMillis.
+        if (event == AlarmEventType.SILENCE && entry.state == BamAlertState.ACTIVE_SILENCED) {
+            return emitFor(entry, previous = entry.state, cause = AlarmEventType.SILENCE, nowMillis = nowMillis)
+        }
 
         // Responsibility transfer is a *request*: honour only if the alert is configured to grant it.
         if (event == AlarmEventType.TRANSFER_RESPONSIBILITY && !entry.config.grantResponsibilityTransfer) {
