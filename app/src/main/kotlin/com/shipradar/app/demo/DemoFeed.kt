@@ -5,6 +5,7 @@ import com.shipradar.comms.service.CommsRouter
 import kotlinx.coroutines.delay
 import kotlin.math.abs
 import kotlin.math.roundToInt
+import kotlin.math.sin
 
 /**
  * On-device demo data source — **the real pipeline, no radar/network needed**.
@@ -28,13 +29,15 @@ object DemoFeed {
         var tick = 0L
         while (true) {
             router.onHaloImage(spokePacket(spoke, seq), now = tick)
-            // ~10 Hz own-ship update: heading slowly rotates so the data bar visibly changes (live data).
+            // Periodic own-ship fix. Heading gently yaws ±3° around 087° (realistic — NOT a continuous
+            // spin), so the data bar shows live values without the whole picture rotating.
             if (spoke % 64 == 0) {
-                val headingDeg = (tick / 100.0) % 360.0
+                val headingDeg = 87.0 + 3.0 * sin(tick / 2500.0)
+                val sogKn = 12.4 + 0.4 * sin(tick / 1700.0)
                 router.on450(Iec450Group.SATD, frame450("HEHDT,${"%05.1f".format(headingDeg)},T"), now = tick)
                 router.on450(
                     Iec450Group.NAVD,
-                    frame450("GPRMC,123519,A,3425.30,N,11942.10,W,12.4,${"%05.1f".format(headingDeg)},090625,,"),
+                    frame450("GPRMC,123519,A,3425.30,N,11942.10,W,${"%04.1f".format(sogKn)},${"%05.1f".format(headingDeg)},090625,,"),
                     now = tick,
                 )
             }
@@ -49,8 +52,7 @@ object DemoFeed {
 
     private fun spokePacket(spokeIndex: Int, seq: Int): ByteArray {
         val azimuthDeg = 360.0 * spokeIndex / SPOKES_PER_REV
-        val s = ByteArray(N)
-        for (i in 0 until N) s[i] = ((i * 7 + spokeIndex) % 3).toByte() // low noise floor 0..2
+        val s = ByteArray(N) // 0 = no echo (clean dark background; no synthetic clutter)
         if (azimuthDeg in 30.0..85.0) for (i in frac(0.65)..frac(0.72)) s[i] = 14 // coastline arc
         if (abs(azimuthDeg - 135.0) < 1.5) for (i in frac(0.39)..frac(0.41)) s[i] = 15 // point target
         val doppler = abs(azimuthDeg - 210.0) < 1.0

@@ -20,6 +20,7 @@ import com.shipradar.app.control.RadarDisplaySettings
 import com.shipradar.app.input.RadarInputLayer
 import com.shipradar.app.databar.DataBar
 import com.shipradar.app.demo.DemoFeed
+import com.shipradar.app.demo.SimRadar
 import com.shipradar.app.framework.ObTheme
 import com.shipradar.app.framework.OpenBridgeTheme
 import com.shipradar.app.ppi.PpiConfig
@@ -31,19 +32,13 @@ import com.shipradar.comms.service.CommsRouter
 import com.shipradar.contract.AlarmEvent
 import com.shipradar.contract.AlarmPriority
 import com.shipradar.contract.AlarmState
-import com.shipradar.contract.MasterSlave
-import com.shipradar.contract.RadarCommand
-import com.shipradar.contract.RadarController
-import com.shipradar.contract.RadarPowerState
-import com.shipradar.contract.RadarStatus
-import com.shipradar.contract.TrackCommand
 import kotlinx.coroutines.flow.MutableStateFlow
 
 /**
  * Top-level HMI assembly — **OWNED BY THE ORCHESTRATOR**. Wires each third-wave worker's self-contained
- * Composable into the [com.shipradar.app.framework.RadarScaffold] slots. Currently driven by per-module
- * preview/fake data; swap [PreviewController] + the fake flows for the comms [RadarCommsService]'s
- * RadarDataBus/RadarController once the service↔UI binding lands.
+ * Composable into the [com.shipradar.app.framework.RadarScaffold] slots. Data flows through the real
+ * decode pipeline (DemoFeed → CommsRouter); the local [com.shipradar.app.demo.SimRadar] stands in for
+ * the radar's control/status loop. Swap both for the comms RadarCommsService once a radar/feed lands.
  *
  * Feature workers must NOT edit this file or [MainActivity].
  */
@@ -62,13 +57,9 @@ fun RadarScreen() {
     val ownShipState by router.ownShip.collectAsState() // live, decoded from RMC/HDT
     val targets = remember { MutableStateFlow(FakeTargets.mixedScene()) }
     val targetList by targets.collectAsState()
-    val status = remember {
-        RadarStatus(
-            powerState = RadarPowerState.TRANSMIT,
-            rangeMeters = 11112, gainAuto = false, gain = 142,
-            seaLevel = 30, rainLevel = 10, masterSlave = MasterSlave.MASTER,
-        )
-    }
+    // Local sim radar so the control panel is responsive (commands update status → panel reflects it).
+    val sim = remember { SimRadar() }
+    val status by sim.status.collectAsState()
     val alarms = remember {
         AlarmPresentation.uiStateOf(
             listOf(
@@ -92,7 +83,7 @@ fun RadarScreen() {
             side = {
                 ControlPanel(
                     status = status,
-                    controller = PreviewController,
+                    controller = sim,
                     display = display,
                     onDisplayChange = { display = it },
                 )
@@ -119,13 +110,6 @@ fun RadarScreen() {
                     )
                 }
             },
-            // input slot: T2.5 RadarInputLayer needs measured centre/radius — wired in next pass.
         )
     }
-}
-
-/** No-op command sink for the fake-data assembly; replaced by the comms RadarController. */
-private object PreviewController : RadarController {
-    override fun send(cmd: RadarCommand) {}
-    override fun send(cmd: TrackCommand) {}
 }
