@@ -159,8 +159,9 @@ object OverlayProjector {
         val trueBrg = Geometry.bearingOf(ne)
         val bowRel = Geometry.normalizeDeg(trueBrg - h)
         val frac = RangeModel.rangeNmToFraction(rangeNm, scaleNm)
-        // Vectors/trails may extend slightly past the ring; clamp visually rather than drop the whole line.
-        return projection.polarToScreen(bowRel, frac.coerceAtMost(RangeModel.MAX_DISPLAYED_RANGE_FRACTION))
+        // Target graphics (vectors/trails) must stay within the operational display circle — clamp to the
+        // ring (1.0), not the echo over-scan fraction, so nothing target-related is drawn outside the circle.
+        return projection.polarToScreen(bowRel, frac.coerceAtMost(1.0))
     }
 
     private fun labelFor(t: TrackedTarget): List<String>? {
