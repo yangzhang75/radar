@@ -59,16 +59,23 @@ interface TrialManeuverSimulator {
  * (A.823 §3.7.1 — the simulation must not interrupt live tracking; the live data is untouched here, only
  * a copy is propagated).
  *
- * This is a correct first-order solution and satisfies the core §3.7 requirement. It does **NOT** model
- * own ship's turning dynamics.
+ * This satisfies the MANDATORY part of A.823 §3.7 / GB 11711-2002 §4.2.7: simulate the effect on all
+ * tracked targets, with/without time delay (§3.7.1/§4.2.7.1 — [TrialManeuverRequest.delaySec]), without
+ * interrupting tracking (only copies are propagated), cancellable at any time (§3.7.3/§4.2.7.3 — this is
+ * stateless, so "cancel" = simply stop calling it). The trial state is surfaced via
+ * [TargetStatus.TEST_MANEUVER]; per GB §4.2.7.1 / Appendix B symbol 10 the screen indication is the
+ * letter **"T"** (rendered by the overlay layer).
  *
- * TODO(待标准 A.823 §3.7.2): the optional realistic model — "simulation of own ship's manoeuvring
- * characteristics" — needs ship-specific parameters not yet supplied:
+ * It does **NOT** model own ship's turning dynamics — that part of §3.7.2/§4.2.7.2 is explicitly
+ * OPTIONAL ("当试操船技术包含对本船机动特性的模拟时…", "if provided") and needs ship-specific parameters
+ * NOT fixed by A.823/GB 11711 (they are vessel/installation data). Documented gap (see delivery report);
+ * to add the curved trajectory the integrator must supply:
  *   - rate of turn (deg/s) or the advance/transfer turning-circle for the trial speed,
  *   - acceleration/deceleration to the trial speed,
- *   - whether the trial symbol/"T" indication and trial timer are operator- or auto-stepped.
- * These are vessel/installation parameters; list them in the delivery report for the integrator to
- * provide, then replace the instantaneous step with the curved trajectory.
+ *   - whether the trial timer is operator- or auto-stepped.
+ * Note A.823 §3.8.4/§4.2.8.4 ("own-ship manoeuvre" = course change of ±45° in 1 min; motion trend within
+ * 1 min, predicted motion within 3 min) bounds post-manoeuvre *settling*, which is again a tracking-layer
+ * timing property, not part of this analytic projection.
  */
 class InstantTrialManeuverSimulator : TrialManeuverSimulator {
 

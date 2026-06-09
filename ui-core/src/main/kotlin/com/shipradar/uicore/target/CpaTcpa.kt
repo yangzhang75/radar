@@ -4,10 +4,11 @@ import com.shipradar.contract.OwnShipData
 import com.shipradar.contract.TrackedTarget
 
 /**
- * Result of a closest-point-of-approach computation (A.823 §3.6.2.3/.4, GB 11711 corresponding clause).
+ * Result of a closest-point-of-approach computation (A.823 §3.6.2.3/.4, GB 11711-2002 §4.2.6.2 c)/d)).
  *
  * @property cpaNm   Predicted closest range, nautical miles (always >= 0).
- * @property tcpaSec Time to CPA, seconds. Negative => CPA already passed (target opening).
+ * @property tcpaSec Time to CPA, seconds. Negative => CPA already passed (target opening) — GB §4.2.6.2 d)
+ *                   explicitly mandates this negative-sign convention ("当目标已经过 CPA 时, TCPA 应以负号表示").
  *                   `null` => no relative motion (relative speed ~0): range is constant, TCPA undefined.
  * @property relativeSpeedKn   Magnitude of the relative-motion vector (knots).
  * @property relativeCourseDeg Direction of relative motion (deg, clockwise from North); `null` if rel speed ~0.
@@ -26,7 +27,15 @@ data class CpaSolution(
  * Geometry: with the target at relative position `p` (NM, NE plane) moving at relative velocity `v`
  * (knots), the relative position at time `t` (hours) is `p + v*t`. The squared range
  * `|p + v*t|^2` is minimised at `t* = -(p·v)/(v·v)`; then `CPA = |p + v*t*|`.
- * TCPA is reported in seconds (`t* * 3600`).
+ * TCPA is reported in seconds (`t* * 3600`). Measurements are referenced to the radar antenna /
+ * own-ship origin (A.823 Appendix 1 Note).
+ *
+ * Accuracy scope (A.823 §3.8 / GB §4.2.8): these formulae are EXACT analytic geometry — they add zero
+ * error, so §3.8.5/§4.2.8.5 ("the ARPA error contribution shall be negligible compared to the input
+ * sensor errors") holds by construction. The §3.8.2/.3 accuracy *table* bounds the tracking/estimation
+ * error under the Appendix 3/D sensor noise over 1–3 min of tracking; that filtering belongs to the
+ * (upstream) target-tracking layer, not to this geometry. Verified against the four A.823 Appendix 2 /
+ * GB Appendix C scenarios in A823AppendixAuditTest.
  */
 object CpaTcpaCalculator {
 
