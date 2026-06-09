@@ -178,4 +178,51 @@ class BamAlarmManagerTest {
         assertEquals(VisualState.STEADY, visual)
         assertEquals(AudibleState.SILENT, audible)
     }
+
+    // --- W4-E audit fixes --------------------------------------------------------------------
+
+    @Test fun repeated_silence_is_accepted_not_refused() {
+        val m = BamAlarmManager()
+        m.raise(3044, nowMillis = 0)
+        m.command(3044, event = AlarmEventType.SILENCE, nowMillis = 1_000)
+        val intents = m.command(3044, event = AlarmEventType.SILENCE, nowMillis = 5_000)
+        // §6.3.4: repeated temporary-silence command is accepted (re-emit, no ARC), state unchanged.
+        assertTrue(intents.none { it is AlarmIntent.RefuseAcn }, "repeated silence must not be refused")
+        assertTrue(intents.any { it is AlarmIntent.ReportAlf })
+        assertEquals(BamAlertState.ACTIVE_SILENCED, m.stateOf(3044))
+    }
+
+    @Test fun repeated_silence_does_not_reset_the_30s_timer() {
+        val m = BamAlarmManager()
+        m.raise(3044, nowMillis = 0)
+        m.command(3044, event = AlarmEventType.SILENCE, nowMillis = 1_000) // silencedAt = 1_000
+        m.command(3044, event = AlarmEventType.SILENCE, nowMillis = 20_000) // must NOT reset to 20_000
+        // Original 30 s from 1_000 expires at 31_000: audible restarts there, proving no timer reset.
+        assertTrue(m.tick(nowMillis = 31_000 - 1).none { it is AlarmIntent.ReportAlf })
+        assertEquals(BamAlertState.ACTIVE_SILENCED, m.stateOf(3044))
+        m.tick(nowMillis = 31_000)
+        assertEquals(BamAlertState.ACTIVE_UNACK, m.stateOf(3044))
+    }
+
+    @Test fun re_raise_of_active_alert_refreshes_without_arc() {
+        val m = BamAlarmManager()
+        m.raise(3044, nowMillis = 0)
+        m.command(3044, event = AlarmEventType.ACKNOWLEDGE, nowMillis = 10) // ACTIVE_ACK
+        val intents = m.raise(3044, nowMillis = 20, text = "CPA target 12")
+        // Re-asserting an already-active condition is not an ACN: refresh, no ARC, no state change.
+        assertTrue(intents.none { it is AlarmIntent.RefuseAcn }, "re-raise must not emit a spurious ARC")
+        assertTrue(intents.any { it is AlarmIntent.ReportAlf })
+        assertEquals(BamAlertState.ACTIVE_ACK, m.stateOf(3044))
+        assertEquals(1, m.activeCount)
+    }
+
+    @Test fun re_raise_from_rectified_unack_is_a_genuine_recurrence() {
+        val m = BamAlarmManager()
+        m.raise(3052, nowMillis = 0) // warning -> ACTIVE_UNACK (no bypass)
+        m.command(3052, event = AlarmEventType.RECTIFY, nowMillis = 10) // -> RECTIFIED_UNACK
+        assertEquals(BamAlertState.RECTIFIED_UNACK, m.stateOf(3052))
+        val intents = m.raise(3052, nowMillis = 20) // condition recurred
+        assertTrue(intents.none { it is AlarmIntent.RefuseAcn })
+        assertEquals(BamAlertState.ACTIVE_UNACK, m.stateOf(3052))
+    }
 }

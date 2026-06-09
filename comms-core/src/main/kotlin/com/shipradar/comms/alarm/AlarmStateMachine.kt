@@ -111,7 +111,7 @@ object AlarmStateMachine {
 
             BamAlertState.ACTIVE_UNACK -> when (event) {
                 AlarmEventType.ACKNOWLEDGE -> accept(current, event, BamAlertState.ACTIVE_ACK) // AT9/WT9
-                AlarmEventType.SILENCE -> accept(current, event, BamAlertState.ACTIVE_SILENCED) // AT16/WT16
+                AlarmEventType.SILENCE -> accept(current, event, BamAlertState.ACTIVE_SILENCED) // silence A2->A4 / W2->W4 (§6.3.4 temporary silence)
                 AlarmEventType.RECTIFY -> accept(current, event, rectifyTargetFromUnack) // AT5/WT5 (+footnote b)
                 AlarmEventType.TERMINATE -> accept(current, event, BamAlertState.NORMAL) // AT18/WT19
                 else -> reject(current, event, "ACTIVE_UNACK accepts ACKNOWLEDGE/SILENCE/RECTIFY/TERMINATE")
