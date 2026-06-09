@@ -1,6 +1,7 @@
 package com.shipradar.app
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -18,23 +19,23 @@ import com.shipradar.app.control.ControlPanel
 import com.shipradar.app.control.RadarDisplaySettings
 import com.shipradar.app.input.RadarInputLayer
 import com.shipradar.app.databar.DataBar
+import com.shipradar.app.demo.DemoFeed
 import com.shipradar.app.framework.ObTheme
 import com.shipradar.app.framework.OpenBridgeTheme
-import com.shipradar.app.ppi.FakeSpokes
 import com.shipradar.app.ppi.PpiConfig
 import com.shipradar.app.ppi.PpiSurface
 import com.shipradar.app.target.FakeTargets
 import com.shipradar.app.target.TargetOverlay
+import com.shipradar.comms.service.CommsConfig
+import com.shipradar.comms.service.CommsRouter
 import com.shipradar.contract.AlarmEvent
 import com.shipradar.contract.AlarmPriority
 import com.shipradar.contract.AlarmState
 import com.shipradar.contract.MasterSlave
-import com.shipradar.contract.OwnShipData
 import com.shipradar.contract.RadarCommand
 import com.shipradar.contract.RadarController
 import com.shipradar.contract.RadarPowerState
 import com.shipradar.contract.RadarStatus
-import com.shipradar.contract.SensorKind
 import com.shipradar.contract.TrackCommand
 import kotlinx.coroutines.flow.MutableStateFlow
 
@@ -51,21 +52,16 @@ fun RadarScreen() {
     // Hoisted display state so the control/mode panels actually drive the PPI + data bar.
     var display by remember { mutableStateOf(RadarDisplaySettings()) }
 
-    // --- fake data sources (orchestrator-owned until T1.1 service binding) -----------------------
-    val spokes = remember { FakeSpokes.continuousSweep() }
+    // --- REAL decode pipeline (on-device, no radar/network) -------------------------------------
+    // DemoFeed builds real HALO wire bytes + 61162 sentences and feeds them through the actual
+    // CommsRouter (real SpokeParser / Iec61162Parser / 450 transport); the router's bus flows drive
+    // the UI. Echoes + own-ship are live via real decode. (Radar targets stay demo objects until the
+    // HALO target wire format is captured from a real device — see docs/认证缺口清单.md.)
+    val router = remember { CommsRouter(CommsConfig()) }
+    LaunchedEffect(router) { DemoFeed.run(router) }
+    val ownShipState by router.ownShip.collectAsState() // live, decoded from RMC/HDT
     val targets = remember { MutableStateFlow(FakeTargets.mixedScene()) }
     val targetList by targets.collectAsState()
-    val ownShipFlow = remember { MutableStateFlow(FakeTargets.ownShip) }
-    val ownShip = remember {
-        OwnShipData(
-            latitude = 34.4217, longitude = -119.7017,
-            headingDeg = 87.0, headingTrue = true, cogDeg = 90.0, sogKn = 12.4,
-            sourceValidity = mapOf(
-                SensorKind.HEADING to true, SensorKind.POSITION to true,
-                SensorKind.COG_SOG to true, SensorKind.RADAR_LINK to true,
-            ),
-        )
-    }
     val status = remember {
         RadarStatus(
             powerState = RadarPowerState.TRANSMIT,
@@ -86,7 +82,7 @@ fun RadarScreen() {
             // W4-A: control + databar now share one canonical RadarDisplaySettings — pass it straight through.
             top = {
                 DataBar(
-                    ownShip = ownShip,
+                    ownShip = ownShipState,
                     status = status,
                     settings = display,
                 )
@@ -102,8 +98,8 @@ fun RadarScreen() {
                 )
             },
             // modes slot intentionally empty — controls all live in the side panel; nothing floats over the PPI.
-            center = { PpiSurface(spokes = spokes, config = PpiConfig(rangeScaleNm = display.rangeScaleNm)) },
-            overlay = { TargetOverlay(targets = targets, ownShip = ownShipFlow, rangeScaleNm = display.rangeScaleNm) },
+            center = { PpiSurface(spokes = router.echoSpokes, config = PpiConfig(rangeScaleNm = display.rangeScaleNm)) },
+            overlay = { TargetOverlay(targets = targets, ownShip = router.ownShip, rangeScaleNm = display.rangeScaleNm) },
             alarms = { AlarmBar(uiState = alarms, controller = NoopAlarmController) },
             // T2.5 interaction layer over the PPI: measure the operational area so touch/key/mouse
             // hit-testing (select/EBL/VRM) aligns with the rendered echoes/targets.
@@ -118,8 +114,8 @@ fun RadarScreen() {
                         orientation = display.orientation,
                         rangeScaleNm = display.rangeScaleNm,
                         targets = targetList,
-                        ownHeadingDeg = ownShip.headingDeg,
-                        ownCourseDeg = ownShip.cogDeg,
+                        ownHeadingDeg = ownShipState.headingDeg,
+                        ownCourseDeg = ownShipState.cogDeg,
                     )
                 }
             },

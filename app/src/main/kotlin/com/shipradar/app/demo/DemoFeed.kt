@@ -1,0 +1,96 @@
+package com.shipradar.app.demo
+
+import com.shipradar.comms.iec450.Iec450Group
+import com.shipradar.comms.service.CommsRouter
+import kotlinx.coroutines.delay
+import kotlin.math.abs
+import kotlin.math.roundToInt
+
+/**
+ * On-device demo data source — **the real pipeline, no radar/network needed**.
+ *
+ * Unlike the in-app `FakeSpokes`/`FakeTargets` (which inject already-parsed objects), this builds
+ * **real HALO wire bytes** + **real IEC 61162 sentences** and feeds them through the actual
+ * [CommsRouter] (real SpokeParser / Iec61162Parser / 450 transport) → its RadarDataBus flows → UI.
+ * So what you see on screen has gone through the genuine decode path. The same router/flows are what
+ * the production [com.shipradar.comms.service.RadarCommsService] uses with a real multicast transport;
+ * here we just feed the router directly instead of over a socket.
+ */
+object DemoFeed {
+    private const val SPOKES_PER_REV = 2048
+    private const val N = 1024 // samples/spoke
+    private const val OVER_SCAN = 1.8
+
+    /** Drive [router] forever: a rotating echo picture + a slowly-changing own-ship fix. */
+    suspend fun run(router: CommsRouter) {
+        var spoke = 0
+        var seq = 0
+        var tick = 0L
+        while (true) {
+            router.onHaloImage(spokePacket(spoke, seq), now = tick)
+            // ~10 Hz own-ship update: heading slowly rotates so the data bar visibly changes (live data).
+            if (spoke % 64 == 0) {
+                val headingDeg = (tick / 100.0) % 360.0
+                router.on450(Iec450Group.SATD, frame450("HEHDT,${"%05.1f".format(headingDeg)},T"), now = tick)
+                router.on450(
+                    Iec450Group.NAVD,
+                    frame450("GPRMC,123519,A,3425.30,N,11942.10,W,12.4,${"%05.1f".format(headingDeg)},090625,,"),
+                    now = tick,
+                )
+            }
+            spoke = (spoke + 1) % SPOKES_PER_REV
+            seq = (seq + 1) and 0x0FFF
+            tick += 6
+            delay(6) // ~12 s/rev at 2048 spokes
+        }
+    }
+
+    // --- HALO image spoke: pack one spoke into the real 24-byte header + 4-bit samples ---------
+
+    private fun spokePacket(spokeIndex: Int, seq: Int): ByteArray {
+        val azimuthDeg = 360.0 * spokeIndex / SPOKES_PER_REV
+        val s = ByteArray(N)
+        for (i in 0 until N) s[i] = ((i * 7 + spokeIndex) % 3).toByte() // low noise floor 0..2
+        if (azimuthDeg in 30.0..85.0) for (i in frac(0.65)..frac(0.72)) s[i] = 14 // coastline arc
+        if (abs(azimuthDeg - 135.0) < 1.5) for (i in frac(0.39)..frac(0.41)) s[i] = 15 // point target
+        val doppler = abs(azimuthDeg - 210.0) < 1.0
+        if (doppler) for (i in frac(0.54)..frac(0.56)) s[i] = 15 // approaching (Doppler)
+
+        val enc = if (doppler) 1 else 0
+        val azRaw = (4096.0 * spokeIndex / SPOKES_PER_REV).toInt() and 0x1FFF
+        val out = ByteArray(24 + N / 2)
+        // word0: spokeLength(12) | seq(16..27) | encoding(28..29)
+        putLe(out, 0, (536 and 0xFFF) or ((seq and 0xFFF) shl 16) or ((enc and 0x3) shl 28))
+        // word1: nOfSamples(0..11) | bitsPerSample(12..15) | rangeCellSize_mm(16..31)
+        putLe(out, 4, (N and 0xFFF) or ((4 and 0xF) shl 12) or ((1500 and 0xFFFF) shl 16))
+        // word2: azimuth(0..12) | compassInvalid(bit31)=1 (demo has no heading sensor on the spoke)
+        putLe(out, 8, azRaw or (1 shl 31))
+        // word3: rangeCellsDiv2(0..15); words4,5 reserved=0
+        putLe(out, 12, 512 and 0xFFFF)
+        var p = 24
+        var i = 0
+        while (i < N) { // 4-bit pack, low index = low nibble (matches SpokeParser)
+            out[p++] = ((s[i].toInt() and 0xF) or ((s[i + 1].toInt() and 0xF) shl 4)).toByte()
+            i += 2
+        }
+        return out
+    }
+
+    private fun putLe(a: ByteArray, off: Int, v: Int) {
+        a[off] = (v and 0xFF).toByte()
+        a[off + 1] = ((v ushr 8) and 0xFF).toByte()
+        a[off + 2] = ((v ushr 16) and 0xFF).toByte()
+        a[off + 3] = ((v ushr 24) and 0xFF).toByte()
+    }
+
+    private fun frac(f: Double): Int = (f * N / OVER_SCAN).roundToInt().coerceIn(0, N - 1)
+
+    // --- 61162-450 framing: wrap a sentence BODY in a sourced UdPbC datagram (real transport) ---
+
+    private fun frame450(body: String): ByteArray {
+        fun xor(t: String) = t.fold(0) { a, c -> a xor c.code } and 0xFF
+        val src = "s:RA0001" // conformant 450 source id (talker + 4 digits)
+        val line = "\\$src*${"%02X".format(xor(src))}\\" + "\$$body*${"%02X".format(xor(body))}" + "\r\n"
+        return "UdPbC".toByteArray(Charsets.ISO_8859_1) + byteArrayOf(0) + line.toByteArray(Charsets.ISO_8859_1)
+    }
+}
