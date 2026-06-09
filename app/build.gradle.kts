@@ -37,4 +37,8 @@ dependencies {
     implementation(libs.compose.ui.graphics)
     implementation(libs.compose.material3)
     implementation(libs.compose.ui.tooling.preview)
+
+    // Local JVM unit tests for pure-Kotlin presentation logic (e.g. databar.DataBarModel).
+    // Android unit tests run on JUnit4; kotlin-test-junit brings the kotlin.test API + JUnit4 runner.
+    testImplementation("org.jetbrains.kotlin:kotlin-test-junit:2.0.21")
 }
