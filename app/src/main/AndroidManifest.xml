@@ -4,7 +4,10 @@
     <application
         android:label="Ship Radar"
         android:supportsRtl="false"
-        android:theme="@android:style/Theme.Material.NoActionBar">
+        android:hardwareAccelerated="true"
+        android:theme="@style/Theme.ShipRadar">
+
+        <!-- Real entry point: full HMI assembly (orchestrator-owned RadarScreen). -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -15,5 +18,12 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Standalone preview host for the PPI render surface (T2.1r); not a launcher. -->
+        <activity
+            android:name="com.shipradar.app.ppi.PpiDemoActivity"
+            android:exported="false"
+            android:screenOrientation="landscape"
+            android:configChanges="orientation|screenSize|keyboardHidden" />
     </application>
 </manifest>

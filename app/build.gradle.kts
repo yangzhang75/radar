@@ -21,9 +21,7 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
-    buildTypes {
-        release { isMinifyEnabled = false }
-    }
+    buildTypes { release { isMinifyEnabled = false } }
 }
 
 dependencies {
@@ -37,8 +35,8 @@ dependencies {
     implementation(libs.compose.ui.graphics)
     implementation(libs.compose.material3)
     implementation(libs.compose.ui.tooling.preview)
-
-    // Local JVM unit tests for pure-Kotlin presentation logic (e.g. databar.DataBarModel).
-    // Android unit tests run on JUnit4; kotlin-test-junit brings the kotlin.test API + JUnit4 runner.
-    testImplementation("org.jetbrains.kotlin:kotlin-test-junit:2.0.21")
+    implementation("androidx.compose.foundation:foundation")          // T2.1r render surface
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7") // collectAsStateWithLifecycle
+    debugImplementation("androidx.compose.ui:ui-tooling")
+    testImplementation("org.jetbrains.kotlin:kotlin-test-junit:2.0.21")  // T2.7/T2.8 JVM unit tests
 }
