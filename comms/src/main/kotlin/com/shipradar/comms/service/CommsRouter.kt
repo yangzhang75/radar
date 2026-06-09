@@ -137,6 +137,16 @@ class CommsRouter(config: CommsConfig) {
             // AIS position reports are geographic-only; range/bearing fusion needs own-ship + ui-core
             // geometry (T1.6/ui-core), so they are counted here, not synthesised into targets.
             is ParsedSentence.AisPositionReport -> aisDeferred++
+            // W5-A secondary sentences: parsed + available, routed where trivial; the rest are
+            // intentionally not yet wired to the bus — TODO(T1.x), tracked in 认证缺口清单 D-class.
+            is ParsedSentence.TargetGeoUpdate -> aisDeferred++   // TLL geo-only; needs own-ship/geometry fusion (T1.6)
+            is ParsedSentence.TargetLabels -> {}                 // TLB label association: needs a target-label store
+            is ParsedSentence.RadarSystemDataUpdate -> {}        // RSD EBL/VRM/cursor: UI-side state (T2.5)
+            is ParsedSentence.DisplayDimming -> {}               // DDC: should drive day/dusk/night palette (T2.9)
+            is ParsedSentence.Heartbeat -> {}                    // HBT: sensor-supervision feed (T1.6 supervisor)
+            is ParsedSentence.AlertListUpdate -> {}              // ALC cyclic alert list -> alarms
+            is ParsedSentence.AlertCommandReceived -> {}         // ACN ack/responsibility -> BamAlarmManager (W5-B)
+            is ParsedSentence.AlertCommandRefused -> {}          // ARC -> BamAlarmManager (W5-B)
             is ParsedSentence.Unsupported -> {}
             null -> {}
         }
