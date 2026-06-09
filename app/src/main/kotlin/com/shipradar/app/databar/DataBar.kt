@@ -17,6 +17,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.shipradar.app.control.MotionMode
+import com.shipradar.app.control.RadarDisplaySettings
+import com.shipradar.app.control.Stabilisation
+import com.shipradar.app.control.VectorMode
 import com.shipradar.contract.MasterSlave
 import com.shipradar.contract.OwnShipData
 import com.shipradar.contract.RadarPowerState
@@ -99,7 +103,7 @@ private fun DataBarPreview() {
             masterSlave = MasterSlave.MASTER,
         ),
         settings = RadarDisplaySettings(
-            orientation = PpiOrientation.NORTH_UP, motionMode = MotionMode.TRUE_MOTION,
+            orientation = PpiOrientation.NORTH_UP, motion = MotionMode.TRUE_MOTION,
             vectorMode = VectorMode.RELATIVE, vectorTimeMin = 6, stabilisation = Stabilisation.GROUND,
         ),
     )

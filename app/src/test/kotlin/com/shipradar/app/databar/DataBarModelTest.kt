@@ -1,5 +1,9 @@
 package com.shipradar.app.databar
 
+import com.shipradar.app.control.MotionMode
+import com.shipradar.app.control.RadarDisplaySettings
+import com.shipradar.app.control.Stabilisation
+import com.shipradar.app.control.VectorMode
 import com.shipradar.contract.MasterSlave
 import com.shipradar.contract.OwnShipData
 import com.shipradar.contract.RadarPowerState
@@ -38,7 +42,7 @@ class DataBarModelTest {
         orientation: PpiOrientation = PpiOrientation.NORTH_UP,
         stabilisation: Stabilisation = Stabilisation.SEA,
     ) = RadarDisplaySettings(
-        orientation = orientation, motionMode = MotionMode.TRUE_MOTION,
+        orientation = orientation, motion = MotionMode.TRUE_MOTION,
         vectorMode = VectorMode.RELATIVE, vectorTimeMin = 6, stabilisation = stabilisation,
     )
 
