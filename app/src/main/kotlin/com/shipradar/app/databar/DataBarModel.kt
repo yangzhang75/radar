@@ -1,5 +1,9 @@
 package com.shipradar.app.databar
 
+import com.shipradar.app.control.MotionMode
+import com.shipradar.app.control.RadarDisplaySettings
+import com.shipradar.app.control.Stabilisation
+import com.shipradar.app.control.VectorMode
 import com.shipradar.contract.MasterSlave
 import com.shipradar.contract.OwnShipData
 import com.shipradar.contract.RadarPowerState
@@ -84,7 +88,7 @@ object DataBarModel {
             if (orientationDegraded) "${orientationLabel(settings.orientation)}→H UP*" else orientationLabel(settings.orientation),
             if (orientationDegraded) FieldSeverity.DEGRADED else FieldSeverity.OK,
         )
-        fields += DataField(DataKey.MOTION, motionLabel(settings.motionMode), FieldSeverity.OK)
+        fields += DataField(DataKey.MOTION, motionLabel(settings.motion), FieldSeverity.OK)
         // 稳定参考 sea/ground；ground 稳定需有效对地速度（COG/SOG）。
         val stabDegraded = settings.stabilisation == Stabilisation.GROUND && !cogSogOk
         fields += DataField(
@@ -241,22 +245,6 @@ data class DataField(val key: DataKey, val value: String, val severity: FieldSev
     val clause: String get() = key.clause
 }
 
-// --- 表示层显示设置类型 ---
-// 注：MotionMode / VectorMode / Stabilisation 当前 contract（shared/）尚无，先在表示层定义。
-// PpiOrientation 复用 ui-core 已有类型。这几项的归属（是否上提到 contract，或归 T2.6 模式开关 worker）
-// 留待 orchestrator 统一——见交付报告「疑问」。
-
-enum class MotionMode { TRUE_MOTION, RELATIVE_MOTION }
-
-enum class VectorMode { TRUE, RELATIVE }
-
-enum class Stabilisation { SEA, GROUND }
-
-/** 数据栏所需的显示模式设置（来自模式开关/控制面板状态）。 */
-data class RadarDisplaySettings(
-    val orientation: PpiOrientation,
-    val motionMode: MotionMode,
-    val vectorMode: VectorMode,
-    val vectorTimeMin: Int,
-    val stabilisation: Stabilisation,
-)
+// W4-A 统一：MotionMode / VectorMode / Stabilisation / RadarDisplaySettings 的副本已删除，
+// 改用 canonical [com.shipradar.app.control.RadarDisplaySettings]（含 rangeScaleNm/orientation/
+// motion/vectorMode/vectorTimeMin/stabilisation）。PpiOrientation 仍复用 ui-core。

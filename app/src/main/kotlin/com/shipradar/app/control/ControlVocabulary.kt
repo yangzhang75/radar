@@ -78,8 +78,8 @@ object ControlVocabulary {
     }
 
     fun motionLabel(m: MotionMode): String = when (m) {
-        MotionMode.TRUE -> TRUE_MOTION
-        MotionMode.RELATIVE -> RELATIVE_MOTION
+        MotionMode.TRUE_MOTION -> TRUE_MOTION
+        MotionMode.RELATIVE_MOTION -> RELATIVE_MOTION
     }
 
     fun guardAlarmLabel(t: GuardZoneAlarmType): String = when (t) {

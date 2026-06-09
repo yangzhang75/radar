@@ -15,14 +15,9 @@ import com.shipradar.app.alarm.AlarmBar
 import com.shipradar.app.alarm.AlarmPresentation
 import com.shipradar.app.alarm.NoopAlarmController
 import com.shipradar.app.control.ControlPanel
-import com.shipradar.app.control.MotionMode
 import com.shipradar.app.control.RadarDisplaySettings
 import com.shipradar.app.input.RadarInputLayer
 import com.shipradar.app.databar.DataBar
-import com.shipradar.app.databar.MotionMode as DbMotionMode
-import com.shipradar.app.databar.RadarDisplaySettings as DataBarSettings
-import com.shipradar.app.databar.Stabilisation as DbStabilisation
-import com.shipradar.app.databar.VectorMode as DbVectorMode
 import com.shipradar.app.framework.ObTheme
 import com.shipradar.app.framework.OpenBridgeTheme
 import com.shipradar.app.ppi.FakeSpokes
@@ -88,19 +83,12 @@ fun RadarScreen() {
 
     OpenBridgeTheme(ObTheme.DAY) {
         com.shipradar.app.framework.RadarScaffold(
-            // TODO(reconcile): control.RadarDisplaySettings and databar.RadarDisplaySettings are
-            // duplicate DTOs from two workers — unify into one shared type (top follow-up). Adapter for now:
+            // W4-A: control + databar now share one canonical RadarDisplaySettings — pass it straight through.
             top = {
                 DataBar(
                     ownShip = ownShip,
                     status = status,
-                    settings = DataBarSettings(
-                        orientation = display.orientation,
-                        motionMode = if (display.motion == MotionMode.TRUE) DbMotionMode.TRUE_MOTION else DbMotionMode.RELATIVE_MOTION,
-                        vectorMode = DbVectorMode.RELATIVE,
-                        vectorTimeMin = 6,
-                        stabilisation = DbStabilisation.GROUND,
-                    ),
+                    settings = display,
                 )
             },
             // ControlPanel already bundles ModeControls (range/motion/orientation) + its own

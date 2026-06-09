@@ -100,8 +100,8 @@ fun ModeControls(
     ControlSection(ControlVocabulary.MOTION, modifier) {
         SegmentedSelector(
             options = listOf(
-                MotionMode.RELATIVE to "${ControlVocabulary.RELATIVE_MOTION} · RELATIVE",
-                MotionMode.TRUE to "${ControlVocabulary.TRUE_MOTION} · TRUE",
+                MotionMode.RELATIVE_MOTION to "${ControlVocabulary.RELATIVE_MOTION} · RELATIVE",
+                MotionMode.TRUE_MOTION to "${ControlVocabulary.TRUE_MOTION} · TRUE",
             ),
             selected = display.motion,
             onSelect = { onDisplayChange(display.copy(motion = it)) },
