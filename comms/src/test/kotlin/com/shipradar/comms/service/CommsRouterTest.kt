@@ -1,6 +1,7 @@
 package com.shipradar.comms.service
 
 import com.shipradar.comms.halo.handshake.LinkEvent
+import com.shipradar.comms.iec450.Iec450Group
 import com.shipradar.comms.sync.DataChannel
 import com.shipradar.comms.sync.LinkAction
 import com.shipradar.contract.AlarmEvent
@@ -63,6 +64,32 @@ class CommsRouterTest {
             actions.any { it is LinkAction.RaiseCommsAlarm },
             "ECHO+STATUS silent past grace must raise 3002: $actions",
         )
+    }
+
+    @Test
+    fun `inbound ACN command acknowledges an alarm through the BAM state machine`() = runTest {
+        val r = CommsRouter(cfg)
+        val events = mutableListOf<AlarmEvent>()
+        backgroundScope.launch { r.alarms.collect { events += it } }
+        runCurrent()
+
+        // Raise alert 3044 (CPA/TCPA) via an ALR sentence in a sourced 61162-450 datagram.
+        r.on450(Iec450Group.BAM1, frame450("RAALR,160012,3044,A,V,CPA danger"), now = 1_000)
+        runCurrent()
+        assertEquals(AlarmState.ACTIVE_UNACK, events.last { it.identifier == 3044 }.state, "ALR should raise 3044 unacknowledged")
+
+        // Inbound ACN (acknowledge) must drive the state machine to ACTIVE_ACK and re-emit on the bus.
+        r.on450(Iec450Group.BAM1, frame450("RAACN,123519,RA,3044,1,A,C"), now = 2_000)
+        runCurrent()
+        assertEquals(AlarmState.ACTIVE_ACK, events.last { it.identifier == 3044 }.state, "inbound ACN must acknowledge 3044")
+    }
+
+    /** Wrap a 61162-1 sentence BODY (no `$`/`*hh`) in a sourced (`s:`) UdPbC 61162-450 datagram. */
+    private fun frame450(body: String): ByteArray {
+        fun xor(s: String) = s.fold(0) { a, c -> a xor c.code } and 0xFF
+        val src = "s:RA0001" // conformant 61162-450 source id (talker + 4 digits)
+        val line = "\\$src*${"%02X".format(xor(src))}\\" + "\$$body*${"%02X".format(xor(body))}" + "\r\n"
+        return "UdPbC".toByteArray(Charsets.ISO_8859_1) + byteArrayOf(0) + line.toByteArray(Charsets.ISO_8859_1)
     }
 
     @Test
