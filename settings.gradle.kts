@@ -23,7 +23,7 @@ include(":comms-core")    // HALO/61162/450 parsing + command encoding + sync lo
 include(":ui-core")       // PPI geometry + color mapping + target/CPA-TCPA logic (pure JVM)
 include(":tools:halofeed") // HALO fake-data generator (pure JVM, sends multicast UDP)
 
-// --- Android modules (thin shells; enable after Android SDK install + minSdk decision §6 #3) ---
-// Uncomment once local.properties points at a valid Android SDK and target API level is decided:
-// include(":comms")      // Foreground Service wiring comms-core to real sockets/lifecycle
-// include(":app")        // Compose HMI + Canvas/GL render surface + input
+// --- Android modules (thin shells over the pure-JVM cores) ---
+// Device base: 1920x1200 landscape, wired ethernet, minSdk 26 / targetSdk 34 (defaults; confirm OS version).
+include(":comms")      // Foreground Service wiring comms-core to real sockets/lifecycle
+include(":app")        // Compose HMI + Canvas/GL render surface + input
