@@ -4,21 +4,33 @@ plugins {
 }
 
 android {
-    namespace = "com.shipradar.comms.android"
+    namespace = "com.shipradar.comms.service"
     compileSdk = 34
 
     defaultConfig {
         minSdk = 26
+        consumerProguardFiles("consumer-rules.pro")
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions { jvmTarget = "17" }
+
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
 }
 
 dependencies {
-    api(project(":comms-core"))           // pure-JVM protocol/parse/sync/alarm logic
+    api(project(":comms-core")) // transitively exposes :shared (frozen contract)
     implementation(libs.kotlinx.coroutines.core)
-    implementation(libs.androidx.lifecycle.service)
+
+    testImplementation(libs.kotlin.test)
+    testImplementation(libs.kotlinx.coroutines.test)
 }

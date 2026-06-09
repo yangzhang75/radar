@@ -1,19 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- Multicast over the 蒲公英 VPN / wired LAN. CHANGE_WIFI_MULTICAST_STATE is required to hold a
+         MulticastLock even on a wired interface, or the Wi-Fi stack filters inbound multicast. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <!-- Required for MulticastLock (HALO + 61162-450 multicast reception over the wired LAN). -->
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
-    <!-- Foreground service so comms keeps running when the UI is backgrounded. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- The radar link must survive the app going to background → foreground service. The radar is an
+         external connected device communicated with over the LAN/VPN. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application>
         <service
-            android:name=".service.RadarCommsService"
+            android:name="com.shipradar.comms.service.RadarCommsService"
             android:exported="false"
-            android:foregroundServiceType="dataSync" />
+            android:foregroundServiceType="connectedDevice" />
     </application>
+
 </manifest>
