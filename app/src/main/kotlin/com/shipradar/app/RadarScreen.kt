@@ -15,6 +15,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
@@ -103,7 +106,28 @@ fun RadarScreen() {
         )
     }
 
+    var showHelp by remember { mutableStateOf(false) }
+
     OpenBridgeTheme(ObTheme.DAY) {
+      // 屏幕根部 onPreviewKeyEvent:先消费雷达控制级快捷键(量程/发射/增益/定向/运动/SIM-LIVE/帮助),
+      // 其余键透传给获得焦点的 RadarInputLayer(光标/目标/EBL/VRM/PI)。两层键位不冲突。
+      androidx.compose.foundation.layout.Box(
+          Modifier
+              .fillMaxSize()
+              .onPreviewKeyEvent { ke ->
+                  if (ke.type != androidx.compose.ui.input.key.KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                  handleControlKey(
+                      key = ke.key,
+                      display = display,
+                      setDisplay = { display = it },
+                      controller = controller,
+                      status = status,
+                      onToggleLive = { live = !live },
+                      onToggleHelp = { showHelp = !showHelp },
+                      onCloseHelp = { showHelp = false },
+                  )
+              },
+      ) {
         com.shipradar.app.framework.RadarScaffold(
             // W4-A: control + databar now share one canonical RadarDisplaySettings — pass it straight through.
             top = {
@@ -182,6 +206,9 @@ fun RadarScreen() {
                 )
             },
         )
+        // 快捷键帮助浮层(F1 / ? 切换),覆盖全屏。
+        if (showHelp) HotkeyHelpOverlay(onDismiss = { showHelp = false })
+      }
     }
 }
 
