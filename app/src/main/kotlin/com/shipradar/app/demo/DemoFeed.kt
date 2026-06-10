@@ -29,6 +29,8 @@ object DemoFeed {
         var tick = 0L
         while (true) {
             router.onHaloImage(spokePacket(spoke, seq), now = tick)
+            // 双量程: 同步喂 Radar B 一幅近距景象 (独立流, 见 onHaloImageB)。dual-range 画面展示用。
+            router.onHaloImageB(spokePacketB(spoke, seq), now = tick)
             // Periodic own-ship fix. Heading gently yaws ±3° around 087° (realistic — NOT a continuous
             // spin), so the data bar shows live values without the whole picture rotating.
             if (spoke % 64 == 0) {
@@ -72,6 +74,31 @@ object DemoFeed {
         var p = 24
         var i = 0
         while (i < N) { // 4-bit pack, low index = low nibble (matches SpokeParser)
+            out[p++] = ((s[i].toInt() and 0xF) or ((s[i + 1].toInt() and 0xF) shl 4)).toByte()
+            i += 2
+        }
+        return out
+    }
+
+    /**
+     * Radar B 近距景象 — 几个近距点目标 + 一段近岸弧,集中在低距离样本 (小 i),所以在短量程
+     * (典型 1.5 NM) 上清晰可见,与 Radar A 的远景形成"双量程"对比。
+     */
+    private fun spokePacketB(spokeIndex: Int, seq: Int): ByteArray {
+        val azimuthDeg = 360.0 * spokeIndex / SPOKES_PER_REV
+        val s = ByteArray(N)
+        if (azimuthDeg in 300.0..340.0) for (i in frac(0.18)..frac(0.22)) s[i] = 13 // 近岸弧
+        if (abs(azimuthDeg - 45.0) < 1.5) for (i in frac(0.12)..frac(0.13)) s[i] = 15  // 近距点目标
+        if (abs(azimuthDeg - 160.0) < 1.5) for (i in frac(0.28)..frac(0.29)) s[i] = 15 // 近距点目标
+        val azRaw = (4096.0 * spokeIndex / SPOKES_PER_REV).toInt() and 0x1FFF
+        val out = ByteArray(24 + N / 2)
+        putLe(out, 0, (536 and 0xFFF) or ((seq and 0xFFF) shl 16))
+        putLe(out, 4, (N and 0xFFF) or ((4 and 0xF) shl 12) or ((1500 and 0xFFFF) shl 16))
+        putLe(out, 8, azRaw or (1 shl 31))
+        putLe(out, 12, 512 and 0xFFFF)
+        var p = 24
+        var i = 0
+        while (i < N) {
             out[p++] = ((s[i].toInt() and 0xF) or ((s[i + 1].toInt() and 0xF) shl 4)).toByte()
             i += 2
         }

@@ -66,6 +66,14 @@ class CommsRouter(config: CommsConfig) {
     )
     val echoSpokes: Flow<EchoSpoke> get() = _echoSpokes.asSharedFlow()
 
+    // 双量程 (HALO dual-range): Radar B 第二回波流 (236.6.7.13)。与 A 同样解析,独立去重。
+    private val _echoSpokesB = MutableSharedFlow<EchoSpoke>(
+        replay = 0,
+        extraBufferCapacity = config.echoBufferCapacity,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    val echoSpokesB: Flow<EchoSpoke> get() = _echoSpokesB.asSharedFlow()
+
     private val _targets = MutableStateFlow<List<TrackedTarget>>(emptyList())
     val targets: StateFlow<List<TrackedTarget>> get() = _targets.asStateFlow()
 
@@ -86,6 +94,7 @@ class CommsRouter(config: CommsConfig) {
     // --- pure logic collaborators ---
     private val supervisor = LinkSupervisor(config.channelConfigs)
     private val seqTracker = SeqTracker()
+    private val seqTrackerB = SeqTracker() // 双量程 Radar B 独立序列去重
     private val spokeParser = SpokeParser
     private val statusParser = HaloStatusParser
     private val targetParser = TargetParser
@@ -112,6 +121,16 @@ class CommsRouter(config: CommsConfig) {
             // Drop retransmit duplicates; everything else (in-order / gap / reordered) reaches the renderer.
             if (seqTracker.observe(spoke.sequenceNumber) != SeqClass.DUPLICATE) {
                 _echoSpokes.tryEmit(spoke)
+            }
+        }
+        return supervisor.onPacket(DataChannel.ECHO, now)
+    }
+
+    /** HALO Radar-B echo image datagram (双量程, 236.6.7.13). Parsed identically into the B flow. */
+    fun onHaloImageB(bytes: ByteArray, now: Long): List<LinkAction> {
+        for (spoke in spokeParser.parse(bytes)) {
+            if (seqTrackerB.observe(spoke.sequenceNumber) != SeqClass.DUPLICATE) {
+                _echoSpokesB.tryEmit(spoke)
             }
         }
         return supervisor.onPacket(DataChannel.ECHO, now)

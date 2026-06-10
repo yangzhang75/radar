@@ -37,6 +37,8 @@ fun RightInfoPanel(
     selected: TrackedTarget? = null,
     simulated: Boolean = true,
     onToggleSource: () -> Unit = {},
+    dualRange: Boolean = false,
+    onToggleDual: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val tt = targets.count { it.source == TargetSource.RADAR_TT }
@@ -68,6 +70,23 @@ fun RightInfoPanel(
                 fontSize = 12.sp,
             )
             Text("  ⇄ 点击切换", color = Color(0xFFB8D2DA), fontSize = 10.sp, modifier = Modifier.padding(start = 6.dp))
+        }
+        // 双量程 (HALO Radar B) 单/双画面切换。
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(top = 2.dp)
+                .background(if (dualRange) Color(0xFF14463A) else Color(0xFF14323A))
+                .clickable { onToggleDual() }
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+        ) {
+            Text(
+                if (dualRange) "▌▌ 双量程 DUAL" else "▌ 单量程 SINGLE",
+                color = if (dualRange) Color(0xFF7FE6A0) else Color(0xFFB8D2DA),
+                fontWeight = FontWeight.Bold,
+                fontSize = 12.sp,
+            )
+            Text("  键 D", color = Color(0xFF7FA6B3), fontSize = 10.sp, modifier = Modifier.padding(start = 6.dp))
         }
         Section("OWN SHIP") {
             Field("HDG", ownShip.headingDeg?.let { deg(it) + if (ownShip.headingTrue) " T" else " M" })

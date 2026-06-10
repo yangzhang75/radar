@@ -51,6 +51,8 @@ class RadarCommsEngine(
     private val router = CommsRouter(config)
 
     override val echoSpokes: Flow<EchoSpoke> get() = router.echoSpokes
+    /** 双量程 Radar B 回波流 (非 RadarDataBus 契约的一部分,引擎附加能力)。 */
+    val echoSpokesB: Flow<EchoSpoke> get() = router.echoSpokesB
     override val targets: StateFlow<List<TrackedTarget>> get() = router.targets
     override val ownShip: StateFlow<OwnShipData> get() = router.ownShip
     override val radarStatus: StateFlow<RadarStatus> get() = router.radarStatus

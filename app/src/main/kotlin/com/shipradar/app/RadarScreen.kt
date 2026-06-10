@@ -93,6 +93,11 @@ fun RadarScreen() {
     val status by (if (live) engine.radarStatus else sim.status).collectAsState()
     val controller: RadarController = if (live) engine else sim
 
+    // 双量程画面 (HALO dual-range / Radar B):并排两幅 PPI,各自量程。B 流见 CommsRouter.echoSpokesB。
+    var dualRange by remember { mutableStateOf(false) }
+    val rangeScaleNmB = 1.5 // Radar B 短量程(近距景象)
+    val spokesB = if (live) engine.echoSpokesB else router.echoSpokesB
+
     // Hoisted interaction state so target selection + EBL/VRM drive the info panel and on-PPI boxes.
     val interaction = rememberRadarInteractionState()
     val selectedTarget = targetList.firstOrNull { it.id == interaction.model.selectedTargetId }
@@ -123,6 +128,7 @@ fun RadarScreen() {
                       controller = controller,
                       status = status,
                       onToggleLive = { live = !live },
+                      onToggleDual = { dualRange = !dualRange },
                       onToggleHelp = { showHelp = !showHelp },
                       onCloseHelp = { showHelp = false },
                   )
@@ -149,28 +155,63 @@ fun RadarScreen() {
             },
             // modes slot intentionally empty — controls all live in the side panel; nothing floats over the PPI.
             center = {
-                // key(live):切换数据源时重建 PPI,清空持久回波位图,避免模拟回波残留进 LIVE(反之亦然)。
-                androidx.compose.runtime.key(live) {
-                    PpiSurface(
-                        spokes = spokes,
-                        config = PpiConfig(
-                            rangeScaleNm = display.rangeScaleNm,
-                            orientation = display.orientation,          // wire the orientation control to echoes
-                            headingDeg = ownShipState.headingDeg,       // so north-up/course-up actually rotate
-                            courseDeg = ownShipState.cogDeg,
-                        ),
-                    )
+                if (dualRange) {
+                    // 双量程:并排两幅 PPI(RADAR A 远景 / RADAR B 近景),各自量程独立。
+                    androidx.compose.foundation.layout.Row(Modifier.fillMaxSize()) {
+                        DualPane("RADAR A", display.rangeScaleNm, Modifier.weight(1f)) {
+                            androidx.compose.runtime.key(live, true) {
+                                PpiSurface(
+                                    spokes = spokes,
+                                    config = PpiConfig(
+                                        rangeScaleNm = display.rangeScaleNm,
+                                        orientation = display.orientation,
+                                        headingDeg = ownShipState.headingDeg,
+                                        courseDeg = ownShipState.cogDeg,
+                                    ),
+                                )
+                            }
+                        }
+                        DualPane("RADAR B", rangeScaleNmB, Modifier.weight(1f)) {
+                            androidx.compose.runtime.key(live, false) {
+                                PpiSurface(
+                                    spokes = spokesB,
+                                    config = PpiConfig(
+                                        rangeScaleNm = rangeScaleNmB,
+                                        orientation = display.orientation,
+                                        headingDeg = ownShipState.headingDeg,
+                                        courseDeg = ownShipState.cogDeg,
+                                    ),
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    // key(live):切换数据源时重建 PPI,清空持久回波位图,避免模拟回波残留进 LIVE(反之亦然)。
+                    androidx.compose.runtime.key(live) {
+                        PpiSurface(
+                            spokes = spokes,
+                            config = PpiConfig(
+                                rangeScaleNm = display.rangeScaleNm,
+                                orientation = display.orientation,          // wire the orientation control to echoes
+                                headingDeg = ownShipState.headingDeg,       // so north-up/course-up actually rotate
+                                courseDeg = ownShipState.cogDeg,
+                            ),
+                        )
+                    }
                 }
             },
             overlay = {
-                TargetOverlay(
-                    targets = if (live) engine.targets else targets,
-                    ownShip = ownShipFlow,
-                    rangeScaleNm = display.rangeScaleNm,
-                    orientation = display.orientation,              // targets follow the same orientation
-                )
-                // On-PPI data boxes (GAIN/SEA/RAIN top, EBL/VRM bottom, RANGE) — standard IMO layout.
-                PpiDataBoxes(status = status, display = display, model = interaction.model)
+                // 单量程才叠加目标/数据框(双量程的并排 PPI 自带各自标签,布局不同)。
+                if (!dualRange) {
+                    TargetOverlay(
+                        targets = if (live) engine.targets else targets,
+                        ownShip = ownShipFlow,
+                        rangeScaleNm = display.rangeScaleNm,
+                        orientation = display.orientation,              // targets follow the same orientation
+                    )
+                    // On-PPI data boxes (GAIN/SEA/RAIN top, EBL/VRM bottom, RANGE) — standard IMO layout.
+                    PpiDataBoxes(status = status, display = display, model = interaction.model)
+                }
                 // 模拟模式明显标识(IEC 62388):PPI 顶部居中常驻 "SIMULATION" 横幅,LIVE 时隐藏。
                 if (!live) SimulationBanner()
             },
@@ -178,20 +219,23 @@ fun RadarScreen() {
             // T2.5 interaction layer over the PPI: measure the operational area so touch/key/mouse
             // hit-testing (select/EBL/VRM) aligns with the rendered echoes/targets.
             input = {
-                BoxWithConstraints(Modifier.fillMaxSize()) {
-                    val d = LocalDensity.current
-                    val wPx = with(d) { maxWidth.toPx() }
-                    val hPx = with(d) { maxHeight.toPx() }
-                    RadarInputLayer(
-                        center = Offset(wPx / 2f, hPx / 2f),
-                        radiusPx = com.shipradar.app.ppi.PpiLayout.operationalRadiusPx(wPx, hPx, d.density),
-                        orientation = display.orientation,
-                        rangeScaleNm = display.rangeScaleNm,
-                        targets = targetList,
-                        ownHeadingDeg = ownShipState.headingDeg,
-                        ownCourseDeg = ownShipState.cogDeg,
-                        state = interaction,
-                    )
+                // 双量程时不启用单 PPI 的交互层(命中测试假设单一全区 PPI);单量程照常。
+                if (!dualRange) {
+                    BoxWithConstraints(Modifier.fillMaxSize()) {
+                        val d = LocalDensity.current
+                        val wPx = with(d) { maxWidth.toPx() }
+                        val hPx = with(d) { maxHeight.toPx() }
+                        RadarInputLayer(
+                            center = Offset(wPx / 2f, hPx / 2f),
+                            radiusPx = com.shipradar.app.ppi.PpiLayout.operationalRadiusPx(wPx, hPx, d.density),
+                            orientation = display.orientation,
+                            rangeScaleNm = display.rangeScaleNm,
+                            targets = targetList,
+                            ownHeadingDeg = ownShipState.headingDeg,
+                            ownCourseDeg = ownShipState.cogDeg,
+                            state = interaction,
+                        )
+                    }
                 }
             },
             // Standard IMO layout area ③ — own-ship + target data + TT/AIS settings + collision danger.
@@ -203,12 +247,41 @@ fun RadarScreen() {
                     selected = selectedTarget,
                     simulated = !live,
                     onToggleSource = { live = !live },
+                    dualRange = dualRange,
+                    onToggleDual = { dualRange = !dualRange },
                 )
             },
         )
         // 快捷键帮助浮层(F1 / ? 切换),覆盖全屏。
         if (showHelp) HotkeyHelpOverlay(onDismiss = { showHelp = false })
       }
+    }
+}
+
+/** 双量程的单个画面窗格 — 内嵌一幅 PPI,左上角标注雷达通道 + 当前量程。 */
+@Composable
+private fun DualPane(
+    label: String,
+    rangeNm: Double,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    androidx.compose.foundation.layout.Box(modifier.fillMaxSize()) {
+        content()
+        androidx.compose.foundation.layout.Box(
+            Modifier
+                .align(androidx.compose.ui.Alignment.TopStart)
+                .padding(8.dp)
+                .background(androidx.compose.ui.graphics.Color(0xCC0B1418))
+                .padding(horizontal = 8.dp, vertical = 3.dp),
+        ) {
+            androidx.compose.material3.Text(
+                "$label  %.2f NM".format(rangeNm),
+                color = androidx.compose.ui.graphics.Color(0xFF9FE6C2),
+                fontSize = 12.sp,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+            )
+        }
     }
 }
 
