@@ -5,6 +5,8 @@ import com.shipradar.comms.iec450.Iec450Group
 import com.shipradar.comms.sync.Backoff
 import com.shipradar.comms.sync.ChannelConfig
 import com.shipradar.comms.sync.DataChannel
+import com.shipradar.constants.DataInterfaceProfile
+import com.shipradar.constants.HaloEndpointSet
 
 /**
  * Configuration for the comms engine. Defaults target a single-radar HALO network reached over the
@@ -21,6 +23,8 @@ import com.shipradar.comms.sync.DataChannel
  * @param tickIntervalMs cadence of the liveness tick that drives staleness/reconnect/3002 decisions.
  * @param iec450Groups which 61162-450 transmission groups to join.
  * @param channelConfigs per-channel staleness/backoff policy for the link supervisor.
+ * @param profile 数据接口 profile(模拟/实际)。仅作标识与默认端点来源。
+ * @param endpoints 数据接口端点整套(按 [profile] 选取);引擎据此 join/收发,不再引用全局常量。
  */
 data class CommsConfig(
     val manualRadarIp: String? = null,
@@ -35,8 +39,27 @@ data class CommsConfig(
     val channelConfigs: Map<DataChannel, ChannelConfig> = defaultChannelConfigs(),
     /** Echo SharedFlow buffer depth; overflow drops the oldest spoke (the spec's echo drop policy). */
     val echoBufferCapacity: Int = 4096,
+    val profile: DataInterfaceProfile = DataInterfaceProfile.ACTUAL,
+    val endpoints: HaloEndpointSet = HaloEndpointSet.actual(),
 ) {
     companion object {
+        /** 实际雷达数据接口(法定 236.6.7.x 端口)。 */
+        fun actual(manualRadarIp: String? = null): CommsConfig =
+            CommsConfig(
+                manualRadarIp = manualRadarIp,
+                profile = DataInterfaceProfile.ACTUAL,
+                endpoints = HaloEndpointSet.actual(),
+            )
+
+        /** 模拟数据接口(端口整体 +1000,与实际隔离;供主机侧 HALO 模拟器经同一数据服务承接)。 */
+        fun simulation(): CommsConfig =
+            CommsConfig(
+                // 模拟无需握手协商,直接绑定模拟端口收发。
+                skipHandshake = true,
+                profile = DataInterfaceProfile.SIMULATION,
+                endpoints = HaloEndpointSet.simulation(),
+            )
+
         /**
          * Staleness/backoff per channel. Echo streams continuously so a short timeout is fine; status
          * is ~2 s periodic; targets/own-ship are slower. Grace windows allow for VPN connect latency.

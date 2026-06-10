@@ -22,6 +22,58 @@ object HaloEndpoints {
     val B_STATUS  = Endpoint("236.6.7.15", 6658)
 }
 
+/** 数据接口 profile —— 模拟接口 vs 实际雷达接口(端口分两套,见 [HaloEndpointSet])。 */
+enum class DataInterfaceProfile { SIMULATION, ACTUAL }
+
+/**
+ * 一整套 HALO 数据接口端点(供通讯引擎按 profile 取用,而非引用全局常量)。
+ * 这样"数据接口端口"可在 [DataInterfaceProfile.SIMULATION] 与 [DataInterfaceProfile.ACTUAL] 间整体切换:
+ *  - [actual]:真实雷达网络的法定组播端点(236.6.7.x,见 [HaloEndpoints])。
+ *  - [simulation]:同组播地址、端口整体 +[SIM_PORT_OFFSET],与真实端口隔离 —— 供主机侧 HALO
+ *    模拟器在本机/同段网络上向"模拟端口"广播,由同一数据服务承接,不与真实雷达端口冲突。
+ */
+data class HaloEndpointSet(
+    val negotiation: Endpoint,
+    val service: Endpoint,
+    val image: Endpoint,
+    val status: Endpoint,
+    val control: Endpoint,
+    val target: Endpoint,
+    val trackStatus: Endpoint,
+    val trackControl: Endpoint,
+    val bImage: Endpoint,
+    val bControl: Endpoint,
+    val bStatus: Endpoint,
+) {
+    companion object {
+        /** 模拟数据接口端口相对实际端口的整体偏移,确保两套端口互不冲突。 */
+        const val SIM_PORT_OFFSET = 1000
+
+        fun actual(): HaloEndpointSet = with(HaloEndpoints) {
+            HaloEndpointSet(
+                NEGOTIATION, SERVICE, IMAGE, STATUS, CONTROL, TARGET,
+                TRACK_STATUS, TRACK_CONTROL, B_IMAGE, B_CONTROL, B_STATUS,
+            )
+        }
+
+        fun simulation(): HaloEndpointSet {
+            fun Endpoint.sim() = copy(port = port + SIM_PORT_OFFSET)
+            return with(HaloEndpoints) {
+                HaloEndpointSet(
+                    NEGOTIATION.sim(), SERVICE.sim(), IMAGE.sim(), STATUS.sim(), CONTROL.sim(),
+                    TARGET.sim(), TRACK_STATUS.sim(), TRACK_CONTROL.sim(),
+                    B_IMAGE.sim(), B_CONTROL.sim(), B_STATUS.sim(),
+                )
+            }
+        }
+
+        fun forProfile(profile: DataInterfaceProfile): HaloEndpointSet = when (profile) {
+            DataInterfaceProfile.ACTUAL -> actual()
+            DataInterfaceProfile.SIMULATION -> simulation()
+        }
+    }
+}
+
 /**
  * HALO control opcodes (little-endian on the wire). 2-byte primary opcode; some carry a 4-byte
  * sub-command (90C1 guard-zone family, 05CB/00CB advanced). Source: §雷达控制 / §雷达高级控制.

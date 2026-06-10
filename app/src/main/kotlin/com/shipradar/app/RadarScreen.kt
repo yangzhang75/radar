@@ -7,7 +7,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
@@ -44,10 +43,14 @@ import com.shipradar.comms.service.AndroidMulticastTransport
 import com.shipradar.comms.service.CommsConfig
 import com.shipradar.comms.service.CommsRouter
 import com.shipradar.comms.service.RadarCommsEngine
+import com.shipradar.comms.service.RealtimeIngest
 import com.shipradar.contract.AlarmEvent
 import com.shipradar.contract.AlarmPriority
 import com.shipradar.contract.AlarmState
 import com.shipradar.contract.RadarController
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 
 /**
@@ -70,11 +73,14 @@ fun RadarScreen() {
     // 两条源都走真解析管线,只是字节来源不同;切换时停掉另一侧。默认进入模拟(无硬件时仍可演示)。
     var live by remember { mutableStateOf(false) }
     val ctx = LocalContext.current
-    val scope = rememberCoroutineScope()
+    // 高实时性:真实数据接口的摄取跑在专用提升优先级线程池上(与 UI 线程隔离),不阻塞合成、不丢帧。
+    // 生产环境由前台 RadarCommsService 承接同一引擎;此处内联引擎用同样的实时调度纪律。
+    val ingestScope = remember { CoroutineScope(SupervisorJob() + RealtimeIngest.dispatcher()) }
 
     val router = remember { CommsRouter(CommsConfig()) }            // SIM 解析器
     val sim = remember { SimRadar() }                              // SIM 控制/状态回路
-    val engine = remember { RadarCommsEngine(AndroidMulticastTransport(ctx), CommsConfig(), scope) } // LIVE
+    // LIVE:实际数据接口 profile(法定 236.6.7.x 端口),实时调度摄取。
+    val engine = remember { RadarCommsEngine(AndroidMulticastTransport(ctx), CommsConfig.actual(), ingestScope) }
 
     // DemoFeed 仅在模拟模式喂数据;切到 LIVE 时取消(键控于 live)。
     LaunchedEffect(live) { if (!live) DemoFeed.run(router) }
@@ -83,6 +89,8 @@ fun RadarScreen() {
         if (live) engine.start()
         onDispose { if (live) engine.stop() }
     }
+    // 屏幕销毁时取消实时摄取 scope,回收专用线程池。
+    DisposableEffect(Unit) { onDispose { ingestScope.cancel() } }
 
     // 按模式选择数据源(SIM=router/sim/假目标 ; LIVE=engine 真总线流)。
     val spokes = if (live) engine.echoSpokes else router.echoSpokes

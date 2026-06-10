@@ -59,8 +59,9 @@ class RadarCommsEngine(
     override val alarms: Flow<AlarmEvent> get() = router.alarms
     override val linkState: StateFlow<LinkState> get() = router.linkState
 
-    @Volatile private var controlEndpoint: Endpoint = HaloEndpoints.CONTROL
-    @Volatile private var trackControlEndpoint: Endpoint = HaloEndpoints.TRACK_CONTROL
+    // 数据接口端点取自 config.endpoints(按 profile = 模拟/实际),不再引用全局常量。
+    @Volatile private var controlEndpoint: Endpoint = config.endpoints.control
+    @Volatile private var trackControlEndpoint: Endpoint = config.endpoints.trackControl
 
     /** Endpoints of the supervised, reconnectable channels (set after handshake). */
     private val channelEndpoints = HashMap<DataChannel, Endpoint>()
@@ -105,15 +106,15 @@ class RadarCommsEngine(
         multicastLock = runCatching { transport.acquireMulticastLock() }.getOrNull()
 
         val info = handshake()
-        controlEndpoint = info.control ?: HaloEndpoints.CONTROL
-        trackControlEndpoint = info.trackControl ?: HaloEndpoints.TRACK_CONTROL
+        controlEndpoint = info.control ?: config.endpoints.control
+        trackControlEndpoint = info.trackControl ?: config.endpoints.trackControl
 
         startWatchdog()
 
         // Supervised HALO data channels (reconnectable on staleness).
-        bindChannel(DataChannel.ECHO, info.image ?: HaloEndpoints.IMAGE)
-        bindChannel(DataChannel.STATUS, info.status ?: HaloEndpoints.STATUS)
-        bindChannel(DataChannel.TARGET, info.target ?: HaloEndpoints.TARGET)
+        bindChannel(DataChannel.ECHO, info.image ?: config.endpoints.image)
+        bindChannel(DataChannel.STATUS, info.status ?: config.endpoints.status)
+        bindChannel(DataChannel.TARGET, info.target ?: config.endpoints.target)
 
         // IEC 61162-450 sensor groups (own-ship / AIS / radar TT / BAM alarms).
         for (group in config.iec450Groups) {
@@ -133,10 +134,10 @@ class RadarCommsEngine(
         while (scope.isActive) {
             router.applyLinkEvent(LinkEvent.RequestSent) // -> NEGOTIATING
             runCatching {
-                transport.send(HaloHandshake.NEGOTIATION_ENDPOINT, HaloHandshake.buildLinkRequest())
+                transport.send(config.endpoints.negotiation, HaloHandshake.buildLinkRequest())
             }
             val reply = withTimeoutOrNull(config.handshakeTimeoutMs) {
-                transport.inbound(HaloHandshake.NEGOTIATION_ENDPOINT).firstOrNull { isLinkAllow(it) }
+                transport.inbound(config.endpoints.negotiation).firstOrNull { isLinkAllow(it) }
             }
             if (reply != null) {
                 val info = runCatching { HaloHandshake.parseLinkAllow(reply) }.getOrNull()
