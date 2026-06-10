@@ -23,7 +23,9 @@ import com.shipradar.app.demo.DemoFeed
 import com.shipradar.app.demo.SimRadar
 import com.shipradar.app.framework.ObTheme
 import com.shipradar.app.framework.OpenBridgeTheme
+import com.shipradar.app.infopanel.PpiDataBoxes
 import com.shipradar.app.infopanel.RightInfoPanel
+import com.shipradar.app.input.rememberRadarInteractionState
 import com.shipradar.app.ppi.PpiConfig
 import com.shipradar.app.ppi.PpiSurface
 import com.shipradar.app.target.FakeTargets
@@ -61,6 +63,9 @@ fun RadarScreen() {
     // Local sim radar so the control panel is responsive (commands update status → panel reflects it).
     val sim = remember { SimRadar() }
     val status by sim.status.collectAsState()
+    // Hoisted interaction state so target selection + EBL/VRM drive the info panel and on-PPI boxes.
+    val interaction = rememberRadarInteractionState()
+    val selectedTarget = targetList.firstOrNull { it.id == interaction.model.selectedTargetId }
     val alarms = remember {
         AlarmPresentation.uiStateOf(
             listOf(
@@ -108,6 +113,8 @@ fun RadarScreen() {
                     rangeScaleNm = display.rangeScaleNm,
                     orientation = display.orientation,              // targets follow the same orientation
                 )
+                // On-PPI data boxes (GAIN/SEA/RAIN top, EBL/VRM bottom, RANGE) — standard IMO layout.
+                PpiDataBoxes(status = status, display = display, model = interaction.model)
             },
             alarms = { AlarmBar(uiState = alarms, controller = NoopAlarmController) },
             // T2.5 interaction layer over the PPI: measure the operational area so touch/key/mouse
@@ -125,11 +132,12 @@ fun RadarScreen() {
                         targets = targetList,
                         ownHeadingDeg = ownShipState.headingDeg,
                         ownCourseDeg = ownShipState.cogDeg,
+                        state = interaction,
                     )
                 }
             },
             // Standard IMO layout area ③ — own-ship + target data + TT/AIS settings + collision danger.
-            right = { RightInfoPanel(ownShip = ownShipState, targets = targetList, display = display) },
+            right = { RightInfoPanel(ownShip = ownShipState, targets = targetList, display = display, selected = selectedTarget) },
         )
     }
 }
