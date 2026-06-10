@@ -1,6 +1,7 @@
 package com.shipradar.app.infopanel
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -34,6 +35,8 @@ fun RightInfoPanel(
     targets: List<TrackedTarget>,
     display: RadarDisplaySettings,
     selected: TrackedTarget? = null,
+    simulated: Boolean = true,
+    onToggleSource: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val tt = targets.count { it.source == TargetSource.RADAR_TT }
@@ -50,6 +53,22 @@ fun RightInfoPanel(
             .verticalScroll(rememberScrollState())
             .padding(8.dp),
     ) {
+        // SIM / LIVE 数据源切换(模拟作为功能)。SIM 时整行琥珀高亮,与 PPI 横幅呼应。
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .background(if (simulated) Color(0xCCB36B00) else Color(0xFF14323A))
+                .clickable { onToggleSource() }
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+        ) {
+            Text(
+                if (simulated) "● SIMULATION 模拟" else "● LIVE 实时",
+                color = if (simulated) Color(0xFFFFF1D6) else Color(0xFF7FE6A0),
+                fontWeight = FontWeight.Bold,
+                fontSize = 12.sp,
+            )
+            Text("  ⇄ 点击切换", color = Color(0xFFB8D2DA), fontSize = 10.sp, modifier = Modifier.padding(start = 6.dp))
+        }
         Section("OWN SHIP") {
             Field("HDG", ownShip.headingDeg?.let { deg(it) + if (ownShip.headingTrue) " T" else " M" })
             Field("COG", ownShip.cogDeg?.let { deg(it) + " T" })
