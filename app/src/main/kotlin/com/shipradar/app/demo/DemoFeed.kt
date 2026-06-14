@@ -1,5 +1,6 @@
 package com.shipradar.app.demo
 
+import com.shipradar.comms.halo.handshake.LinkEvent
 import com.shipradar.comms.iec450.Iec450Group
 import com.shipradar.comms.service.CommsRouter
 import com.shipradar.contract.RadarPowerState
@@ -30,25 +31,29 @@ object DemoFeed {
 
     /** Drive [router] forever: a rotating echo picture + a slowly-changing own-ship fix. */
     suspend fun run(router: CommsRouter) {
+        // 模拟已建链 → linkState=CONNECTED(BITE / 链路监视显示健康,而非误报 FAULT)。
+        router.applyLinkEvent(LinkEvent.AllowReceived)
         var spoke = 0
         var seq = 0
         var tick = 0L
         while (true) {
-            router.onHaloImage(spokePacket(spoke, seq), now = tick)
+            // 用墙钟做 now:链路时延 / BITE 年龄计算才正确(合成 tick 与 UI 墙钟不同域会算出天文数字)。
+            val now = System.currentTimeMillis()
+            router.onHaloImage(spokePacket(spoke, seq), now = now)
             // 双量程: 同步喂 Radar B 一幅近距景象 (独立流, 见 onHaloImageB)。dual-range 画面展示用。
-            router.onHaloImageB(spokePacketB(spoke, seq), now = tick)
+            router.onHaloImageB(spokePacketB(spoke, seq), now = now)
             // 状态通道 01C4 ~每2s 一帧(发射态),让 SIM 也走真状态解码(链路监视可见 STATUS 活跃)。
-            if (spoke % 333 == 0) router.onHaloStatus(statusPacket(), now = tick)
+            if (spoke % 333 == 0) router.onHaloStatus(statusPacket(), now = now)
             // Periodic own-ship fix. Heading gently yaws ±3° around 087° (realistic — NOT a continuous
             // spin), so the data bar shows live values without the whole picture rotating.
             if (spoke % 64 == 0) {
                 val headingDeg = 87.0 + 3.0 * sin(tick / 2500.0)
                 val sogKn = 12.4 + 0.4 * sin(tick / 1700.0)
-                router.on450(Iec450Group.SATD, frame450("HEHDT,${"%05.1f".format(headingDeg)},T"), now = tick)
+                router.on450(Iec450Group.SATD, frame450("HEHDT,${"%05.1f".format(headingDeg)},T"), now = now)
                 router.on450(
                     Iec450Group.NAVD,
                     frame450("GPRMC,123519,A,3425.30,N,11942.10,W,${"%04.1f".format(sogKn)},${"%05.1f".format(headingDeg)},090625,,"),
-                    now = tick,
+                    now = now,
                 )
             }
             spoke = (spoke + 1) % SPOKES_PER_REV

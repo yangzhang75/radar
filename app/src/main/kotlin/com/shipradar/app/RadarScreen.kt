@@ -33,7 +33,12 @@ import com.shipradar.app.demo.DemoFeed
 import com.shipradar.app.demo.SimRadar
 import com.shipradar.app.framework.ObTheme
 import com.shipradar.app.framework.OpenBridgeTheme
+import com.shipradar.app.bite.BiteMapping
+import com.shipradar.app.bite.BitePanel
 import com.shipradar.app.infopanel.PpiDataBoxes
+import com.shipradar.app.theme.ThemePanel
+import com.shipradar.app.theme.rememberThemeState
+import com.shipradar.app.trial.TrialManeuverPanel
 import com.shipradar.app.infopanel.RightInfoPanel
 import com.shipradar.app.input.rememberRadarInteractionState
 import com.shipradar.app.ppi.PpiConfig
@@ -125,11 +130,16 @@ fun RadarScreen() {
 
     var showHelp by remember { mutableStateOf(false) }
     var showMonitor by remember { mutableStateOf(false) }
+    var showTrial by remember { mutableStateOf(false) }
+    var showTheme by remember { mutableStateOf(false) }
+    var showBite by remember { mutableStateOf(false) }
+    // 昼/黄昏/夜 + 亮度(W6-B):hoist 一次,驱动全局 OpenBridgeTheme;面板由 K 键浮层调节。
+    val themeState = rememberThemeState()
     // 链路监视数据源(SIM=router 计数 / LIVE=engine 计数);两者都有 dataLinkSnapshot。
     val linkSnapshot: (Long) -> com.shipradar.comms.service.DataLinkStats =
         if (live) engine::dataLinkSnapshot else router::dataLinkSnapshot
 
-    OpenBridgeTheme(ObTheme.DAY) {
+    OpenBridgeTheme(theme = themeState.mode.toObTheme()) {
       // 屏幕根部 onPreviewKeyEvent:先消费雷达控制级快捷键(量程/发射/增益/定向/运动/SIM-LIVE/帮助),
       // 其余键透传给获得焦点的 RadarInputLayer(光标/目标/EBL/VRM/PI)。两层键位不冲突。
       androidx.compose.foundation.layout.Box(
@@ -146,8 +156,15 @@ fun RadarScreen() {
                       onToggleLive = { live = !live },
                       onToggleDual = { dualRange = !dualRange },
                       onToggleMonitor = { showMonitor = !showMonitor },
+                      onToggleTrial = { showTrial = !showTrial },
+                      onToggleTheme = { showTheme = !showTheme },
+                      onToggleBite = { showBite = !showBite },
                       onToggleHelp = { showHelp = !showHelp },
-                      onCloseHelp = { showHelp = false },
+                      // Esc 关闭任意打开的浮层。
+                      onCloseHelp = {
+                          showHelp = false; showMonitor = false
+                          showTrial = false; showTheme = false; showBite = false
+                      },
                   )
               },
       ) {
@@ -290,6 +307,29 @@ fun RadarScreen() {
         if (showHelp) HotkeyHelpOverlay(onDismiss = { showHelp = false })
         // 数据链路监视浮层(L 切换)。
         if (showMonitor) LinkMonitorOverlay(snapshot = linkSnapshot, onDismiss = { showMonitor = false })
+        // 试操船(Y)/ 主题(K)/ BITE(B)浮层(W6 员工面板)。
+        if (showTrial) DismissOverlay({ showTrial = false }) {
+            TrialManeuverPanel(ownShip = ownShipState, targets = targetList)
+        }
+        if (showTheme) DismissOverlay({ showTheme = false }) {
+            ThemePanel(
+                mode = themeState.mode,
+                brilliance = themeState.brilliance,
+                onModeChange = { themeState.setMode(it) },
+                onBrillianceChange = { themeState.changeBrilliance(it) },
+            )
+        }
+        if (showBite) DismissOverlay({ showBite = false }) {
+            // 周期刷新 BITE 报告(链路快照 + 自船有效性 → BiteReport)。
+            var report by remember { mutableStateOf(BiteMapping.from(linkSnapshot(System.currentTimeMillis()), ownShipState)) }
+            LaunchedEffect(Unit) {
+                while (true) {
+                    report = BiteMapping.from(linkSnapshot(System.currentTimeMillis()), ownShipState)
+                    kotlinx.coroutines.delay(1000)
+                }
+            }
+            BitePanel(report = report)
+        }
       }
     }
 }
@@ -375,6 +415,28 @@ private fun RangeStepButton(symbol: String, onClick: () -> Unit) {
             fontSize = 16.sp,
             fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
         )
+    }
+}
+
+/** 通用浮层:半透明遮罩居中显示面板;点遮罩关闭,点面板本身不关(吸收点击,保证滑条/按钮可用)。 */
+@Composable
+private fun DismissOverlay(onDismiss: () -> Unit, content: @Composable () -> Unit) {
+    androidx.compose.foundation.layout.Box(
+        Modifier
+            .fillMaxSize()
+            .background(androidx.compose.ui.graphics.Color(0xCC000810))
+            .clickable(
+                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                indication = null,
+            ) { onDismiss() },
+        contentAlignment = androidx.compose.ui.Alignment.Center,
+    ) {
+        androidx.compose.foundation.layout.Box(
+            Modifier.clickable(
+                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                indication = null,
+            ) {},
+        ) { content() }
     }
 }
 

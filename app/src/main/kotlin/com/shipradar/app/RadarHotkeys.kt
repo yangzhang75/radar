@@ -48,6 +48,9 @@ fun handleControlKey(
     onToggleLive: () -> Unit,
     onToggleDual: () -> Unit,
     onToggleMonitor: () -> Unit,
+    onToggleTrial: () -> Unit,
+    onToggleTheme: () -> Unit,
+    onToggleBite: () -> Unit,
     onToggleHelp: () -> Unit,
     onCloseHelp: () -> Unit,
 ): Boolean {
@@ -93,6 +96,10 @@ fun handleControlKey(
         Key.D -> onToggleDual()
         // 数据链路监视
         Key.L -> onToggleMonitor()
+        // 试操船 / 主题(昼黄昏夜+亮度)/ 性能监视 BITE
+        Key.Y -> onToggleTrial()
+        Key.K -> onToggleTheme()
+        Key.B -> onToggleBite()
         // 快捷键帮助
         Key.F1, Key.Slash -> onToggleHelp()
         Key.Escape -> onCloseHelp()
@@ -124,6 +131,9 @@ private val controlKeys = listOf(
     "S" to "数据源 模拟 / 实时 (SIM/LIVE)",
     "D" to "单量程 / 双量程画面 (Radar B)",
     "L" to "数据链路监视 (LINK MONITOR)",
+    "Y" to "试操船 (Trial Maneuver)",
+    "K" to "主题 昼/黄昏/夜 + 亮度",
+    "B" to "性能监视 / BITE 自检",
     "F1  ?" to "显示 / 隐藏本帮助",
 )
 private val cursorKeys = listOf(
