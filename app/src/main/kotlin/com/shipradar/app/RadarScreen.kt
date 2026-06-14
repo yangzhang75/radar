@@ -258,6 +258,7 @@ fun RadarScreen() {
                                 courseDeg = ownShipState.cogDeg,
                                 centerOffsetX = viewOff.x,                  // 偏心显示(O 键)
                                 centerOffsetY = viewOff.y,
+                                palette = themeState.mode.toEchoPalette(),  // PPI 回波色随昼/黄昏/夜主题
                             ),
                         )
                     }
