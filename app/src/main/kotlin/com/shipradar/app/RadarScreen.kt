@@ -35,10 +35,14 @@ import com.shipradar.app.framework.ObTheme
 import com.shipradar.app.framework.OpenBridgeTheme
 import com.shipradar.app.bite.BiteMapping
 import com.shipradar.app.bite.BitePanel
+import com.shipradar.app.guardzone.GuardZoneSetupPanel
 import com.shipradar.app.infopanel.PpiDataBoxes
 import com.shipradar.app.theme.ThemePanel
 import com.shipradar.app.theme.rememberThemeState
+import com.shipradar.app.tracks.TracksControlPanel
+import com.shipradar.app.tracks.TrackLength
 import com.shipradar.app.trial.TrialManeuverPanel
+import com.shipradar.uicore.target.OverlayConfig
 import com.shipradar.app.infopanel.RightInfoPanel
 import com.shipradar.app.input.rememberRadarInteractionState
 import com.shipradar.app.ppi.PpiConfig
@@ -133,6 +137,10 @@ fun RadarScreen() {
     var showTrial by remember { mutableStateOf(false) }
     var showTheme by remember { mutableStateOf(false) }
     var showBite by remember { mutableStateOf(false) }
+    var showGuard by remember { mutableStateOf(false) }
+    var showTracks by remember { mutableStateOf(false) }
+    // 过去航迹时长(H 键调):驱动现有 TargetOverlay 航迹(showTrails/maxTrailPoints),不另起冗余系统。
+    var trackLength by remember { mutableStateOf(TrackLength.MIN_3) }
     // 昼/黄昏/夜 + 亮度(W6-B):hoist 一次,驱动全局 OpenBridgeTheme;面板由 K 键浮层调节。
     val themeState = rememberThemeState()
     // 链路监视数据源(SIM=router 计数 / LIVE=engine 计数);两者都有 dataLinkSnapshot。
@@ -159,11 +167,14 @@ fun RadarScreen() {
                       onToggleTrial = { showTrial = !showTrial },
                       onToggleTheme = { showTheme = !showTheme },
                       onToggleBite = { showBite = !showBite },
+                      onToggleGuard = { showGuard = !showGuard },
+                      onToggleTracks = { showTracks = !showTracks },
                       onToggleHelp = { showHelp = !showHelp },
                       // Esc 关闭任意打开的浮层。
                       onCloseHelp = {
                           showHelp = false; showMonitor = false
                           showTrial = false; showTheme = false; showBite = false
+                          showGuard = false; showTracks = false
                       },
                   )
               },
@@ -246,6 +257,16 @@ fun RadarScreen() {
                         ownShip = ownShipFlow,
                         rangeScaleNm = display.rangeScaleNm,
                         orientation = display.orientation,              // targets follow the same orientation
+                        // 过去航迹由 H 键的时长驱动(复用现有 A.823 航迹,非冗余系统)。
+                        config = OverlayConfig(
+                            showTrails = trackLength.enabled,
+                            maxTrailPoints = when (trackLength) {
+                                TrackLength.OFF -> 0
+                                TrackLength.MIN_1 -> 4
+                                TrackLength.MIN_3 -> 6
+                                TrackLength.MIN_6 -> 8
+                            },
+                        ),
                     )
                     // On-PPI data boxes (GAIN/SEA/RAIN top, EBL/VRM bottom, RANGE) — standard IMO layout.
                     PpiDataBoxes(status = status, display = display, model = interaction.model)
@@ -329,6 +350,14 @@ fun RadarScreen() {
                 }
             }
             BitePanel(report = report)
+        }
+        // 报警圈/捕获区 设置(Z)—— 面板向雷达下发 guard-zone 命令。
+        if (showGuard) DismissOverlay({ showGuard = false }) {
+            GuardZoneSetupPanel(controller = controller)
+        }
+        // 过去航迹 时长(H)—— 驱动现有 TargetOverlay 航迹。
+        if (showTracks) DismissOverlay({ showTracks = false }) {
+            TracksControlPanel(length = trackLength, onLengthChange = { trackLength = it })
         }
       }
     }
