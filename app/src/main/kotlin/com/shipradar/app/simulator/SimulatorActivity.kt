@@ -113,6 +113,7 @@ private fun SimulatorScreen() {
     var format by remember { mutableStateOf("NMEA-0183") }
     var udpHost by remember { mutableStateOf("127.0.0.1") }
     var udpPort by remember { mutableStateOf("10110") }
+    var net450 by remember { mutableStateOf(false) } // 输出模式:裸 NMEA 单播 vs 61162-450 组播(可喂雷达)
     var running by remember { mutableStateOf(false) }
     val log = remember { mutableStateListOf<String>() }
 
@@ -137,10 +138,17 @@ private fun SimulatorScreen() {
                 }
                 for (line in lines) {
                     log.add(0, line)
-                    if (dst != null) withContext(Dispatchers.IO) {
+                    withContext(Dispatchers.IO) {
                         runCatching {
-                            val b = (line + "\r\n").toByteArray(Charsets.US_ASCII)
-                            sock.send(DatagramPacket(b, b.size, dst))
+                            if (net450) {
+                                // 61162-450 组播:按语句类型选 TGTD/SATD/NAVD 组(可被雷达 app 接收)。
+                                val ep = com.shipradar.sim.Iec450Frame.endpointFor(line)
+                                val b = com.shipradar.sim.Iec450Frame.wrap(line)
+                                sock.send(DatagramPacket(b, b.size, InetSocketAddress(ep.address, ep.port)))
+                            } else if (dst != null) {
+                                val b = (line + "\r\n").toByteArray(Charsets.US_ASCII)
+                                sock.send(DatagramPacket(b, b.size, dst))
+                            }
                         }
                     }
                 }
@@ -169,9 +177,15 @@ private fun SimulatorScreen() {
                         F("UDP 主机", udpHost, Modifier.weight(2f)) { udpHost = it }
                         F("端口", udpPort, Modifier.weight(1f)) { udpPort = it }
                     }
-                    Button(onClick = { running = !running }) { Text(if (running) "停止 ■" else "运行 ▶") }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = { running = !running }) { Text(if (running) "停止 ■" else "运行 ▶") }
+                        Button(onClick = { net450 = !net450 }) {
+                            Text(if (net450) "输出: 61162-450 组播" else "输出: 裸 NMEA 单播")
+                        }
+                    }
                     Text(
-                        "活动输出=UDP(可指向雷达 61162-450 端口);串口为 USB-serial 输出预留。",
+                        if (net450) "61162-450 组播(TGTD/SATD/NAVD)—— 同网段雷达 app 可直接接收(真机/真网段验证)。"
+                        else "裸 NMEA 单播到上面 UDP 主机:端口;串口为 USB-serial 输出预留。",
                         fontSize = 10.sp, color = Color(0xFF888888),
                     )
                 }
