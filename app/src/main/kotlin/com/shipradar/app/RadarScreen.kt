@@ -35,6 +35,7 @@ import com.shipradar.app.framework.ObTheme
 import com.shipradar.app.framework.OpenBridgeTheme
 import com.shipradar.app.bite.BiteMapping
 import com.shipradar.app.bite.BitePanel
+import com.shipradar.app.chart.ChartOverlay
 import com.shipradar.app.autoacq.AcqZone
 import com.shipradar.app.autoacq.AcqZoneOverlay
 import com.shipradar.app.autoacq.AcqZoneSetupPanel
@@ -176,6 +177,8 @@ fun RadarScreen() {
     // 自动捕获区(C 键):hoisted,面板编辑 + PPI 叠加共用。
     var showAcq by remember { mutableStateOf(false) }
     var acqZones by remember { mutableStateOf(List(2) { AcqZone(id = it) }) }
+    // 海图/底图叠加(X 键),默认开。
+    var showChart by remember { mutableStateOf(true) }
     // 过去航迹时长(H 键调):驱动现有 TargetOverlay 航迹(showTrails/maxTrailPoints),不另起冗余系统。
     var trackLength by remember { mutableStateOf(TrackLength.MIN_3) }
     // 昼/黄昏/夜 + 亮度(W6-B):hoist 一次,驱动全局 OpenBridgeTheme;面板由 K 键浮层调节。
@@ -209,6 +212,7 @@ fun RadarScreen() {
                       onToggleView = { showView = !showView },
                       onToggleReplay = { replay = !replay },
                       onToggleAcq = { showAcq = !showAcq },
+                      onToggleChart = { showChart = !showChart },
                       onToggleHelp = { showHelp = !showHelp },
                       // Esc 关闭任意打开的浮层。
                       onCloseHelp = {
@@ -296,6 +300,25 @@ fun RadarScreen() {
             overlay = {
                 // 单量程才叠加目标/数据框(双量程的并排 PPI 自带各自标签,布局不同)。
                 if (!dualRange) {
+                    // 海图/底图(X 键,默认开):画在最底,目标/回波在其上。随本船位置/量程/方位/偏心。
+                    if (showChart) {
+                        BoxWithConstraints(Modifier.fillMaxSize()) {
+                            val d = LocalDensity.current
+                            val wPx = with(d) { maxWidth.toPx() }
+                            val hPx = with(d) { maxHeight.toPx() }
+                            val rad = com.shipradar.app.ppi.PpiLayout.operationalRadiusPx(wPx, hPx, d.density)
+                            ChartOverlay(
+                                ownLat = ownShipState.latitude,
+                                ownLon = ownShipState.longitude,
+                                headingDeg = ownShipState.headingDeg,
+                                courseDeg = ownShipState.cogDeg,
+                                rangeScaleNm = display.rangeScaleNm,
+                                orientation = display.orientation,
+                                center = Offset(wPx / 2f + viewOff.x * rad, hPx / 2f + viewOff.y * rad),
+                                radiusPx = rad,
+                            )
+                        }
+                    }
                     TargetOverlay(
                         targets = if (live) (boundEngine?.targets ?: liveTargets) else targets,
                         ownShip = ownShipFlow,

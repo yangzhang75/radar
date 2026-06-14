@@ -56,6 +56,7 @@ fun handleControlKey(
     onToggleView: () -> Unit,
     onToggleReplay: () -> Unit,
     onToggleAcq: () -> Unit,
+    onToggleChart: () -> Unit,
     onToggleHelp: () -> Unit,
     onCloseHelp: () -> Unit,
 ): Boolean {
@@ -111,6 +112,7 @@ fun handleControlKey(
         Key.O -> onToggleView() // 偏心显示 / 真运动复位
         Key.J -> onToggleReplay() // 真数据回放(模拟侧)
         Key.C -> onToggleAcq()    // 自动捕获区
+        Key.X -> onToggleChart()  // 海图/底图叠加
         // 快捷键帮助
         Key.F1, Key.Slash -> onToggleHelp()
         Key.Escape -> onCloseHelp()
@@ -150,6 +152,7 @@ private val controlKeys = listOf(
     "O" to "偏心显示 / 真运动复位",
     "J" to "真数据回放 (录像→PPI)",
     "C" to "自动捕获区 设置",
+    "X" to "海图/底图叠加 开关",
     "F1  ?" to "显示 / 隐藏本帮助",
 )
 private val cursorKeys = listOf(
