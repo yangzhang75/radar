@@ -35,6 +35,10 @@ data class PpiConfig(
     val showRangeRings: Boolean = true,
     val showBearingScale: Boolean = true,
     val showHeadingLine: Boolean = true,
+    // 偏心显示(IEC 62388 §10.4.2):本船(CCRP)相对操作区中心的归一化偏移(半径分数,+x 右 +y 下)。
+    // 回波/距离环/艏向线随之移位;方位刻度+背景保持屏幕中心(本船移出中心以扩大前方视野)。
+    val centerOffsetX: Float = 0f,
+    val centerOffsetY: Float = 0f,
 ) {
     /**
      * The orientation actually usable given available sensors. Azimuth-stabilised modes (north-up,

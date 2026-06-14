@@ -91,8 +91,12 @@ class PpiView @JvmOverloads constructor(
     /** Projection used to scan-convert spokes INTO the bitmap (centre = bitmap centre). */
     private var echoProjection: PpiProjection? = null
 
-    /** Projection used to draw overlays on the view canvas (centre = view centre). */
+    /** Projection centred on own-ship/CCRP (= view centre + 偏心 offset). Rings/heading/echoes use this. */
     private var overlayProjection: PpiProjection? = null
+
+    /** Projection fixed at the view centre (no 偏心 offset). Bearing scale + background use this so the
+     * compass ring stays around the operational area while own-ship moves (IEC 62388 §10.4.2). */
+    private var scaleProjection: PpiProjection? = null
 
     // ---- persistence bitmap ---------------------------------------------------------------------
 
@@ -219,7 +223,18 @@ class PpiView @JvmOverloads constructor(
             headingDeg = config.headingDeg,
             courseDeg = config.courseDeg,
         )
+        // 本船中心 = 视图中心 + 偏心偏移(归一化 × 半径)。
+        val ox = config.centerOffsetX * r
+        val oy = config.centerOffsetY * r
         overlayProjection = PpiProjection.create(
+            center = ScreenPoint(width / 2.0 + ox, height / 2.0 + oy),
+            radiusPx = r,
+            orientation = o,
+            headingDeg = config.headingDeg,
+            courseDeg = config.courseDeg,
+        )
+        // 方位刻度/背景固定于视图中心(本船偏心时罗经环不动)。
+        scaleProjection = PpiProjection.create(
             center = ScreenPoint(width / 2.0, height / 2.0),
             radiusPx = r,
             orientation = o,
@@ -293,19 +308,24 @@ class PpiView @JvmOverloads constructor(
 
     override fun onDraw(canvas: Canvas) {
         // IEC 62288 §5.4.1.1 — dark non-reflecting background under every ambient condition.
+        // 背景圆固定于视图中心(操作区不随本船偏心移动)。
         backgroundPaint.color = backgroundColorFor(config.palette)
         canvas.drawCircle(width / 2f, height / 2f, radiusPx, backgroundPaint)
 
+        // 回波位图随本船偏心移位。
+        val ox = config.centerOffsetX * radiusPx
+        val oy = config.centerOffsetY * radiusPx
         synchronized(bitmapLock) {
             echoBitmap?.let { bmp ->
-                canvas.drawBitmap(bmp, width / 2f - radiusPx, height / 2f - radiusPx, null)
+                canvas.drawBitmap(bmp, width / 2f + ox - radiusPx, height / 2f + oy - radiusPx, null)
             }
         }
 
         val proj = overlayProjection ?: return
-        if (config.showRangeRings) drawRangeRings(canvas, proj)
-        if (config.showBearingScale) drawBearingScale(canvas, proj)
-        if (config.showHeadingLine) drawHeadingLine(canvas, proj)
+        if (config.showRangeRings) drawRangeRings(canvas, proj)       // 距离环随本船
+        // 方位刻度用固定投影(罗经环留在操作区,本船偏心时不动)。
+        if (config.showBearingScale) drawBearingScale(canvas, scaleProjection ?: proj)
+        if (config.showHeadingLine) drawHeadingLine(canvas, proj)     // 艏向线自本船起
     }
 
     private fun drawRangeRings(canvas: Canvas, proj: PpiProjection) {

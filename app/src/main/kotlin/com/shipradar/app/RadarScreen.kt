@@ -45,6 +45,8 @@ import com.shipradar.app.theme.rememberThemeState
 import com.shipradar.app.tracks.TracksControlPanel
 import com.shipradar.app.tracks.TrackLength
 import com.shipradar.app.trial.TrialManeuverPanel
+import com.shipradar.app.viewctl.ViewControlPanel
+import com.shipradar.app.viewctl.rememberViewControlState
 import com.shipradar.uicore.target.OverlayConfig
 import com.shipradar.app.infopanel.RightInfoPanel
 import com.shipradar.app.input.rememberRadarInteractionState
@@ -144,6 +146,10 @@ fun RadarScreen() {
     var showTracks by remember { mutableStateOf(false) }
     // 报警圈状态 hoist:面板编辑 + PPI 轮廓共用同一份。
     var guardZones by remember { mutableStateOf(List(GuardZoneModel.ZONE_COUNT) { GuardZone(zone = it) }) }
+    // 偏心显示(O 键):归一化偏移,驱动 PPI 投影 + 各叠加层同一本船中心。
+    var showView by remember { mutableStateOf(false) }
+    val viewCtl = rememberViewControlState()
+    val viewOff = viewCtl.effectiveOffset // ViewOffset(x,y) 归一化(半径分数)
     // 过去航迹时长(H 键调):驱动现有 TargetOverlay 航迹(showTrails/maxTrailPoints),不另起冗余系统。
     var trackLength by remember { mutableStateOf(TrackLength.MIN_3) }
     // 昼/黄昏/夜 + 亮度(W6-B):hoist 一次,驱动全局 OpenBridgeTheme;面板由 K 键浮层调节。
@@ -174,12 +180,13 @@ fun RadarScreen() {
                       onToggleBite = { showBite = !showBite },
                       onToggleGuard = { showGuard = !showGuard },
                       onToggleTracks = { showTracks = !showTracks },
+                      onToggleView = { showView = !showView },
                       onToggleHelp = { showHelp = !showHelp },
                       // Esc 关闭任意打开的浮层。
                       onCloseHelp = {
                           showHelp = false; showMonitor = false
                           showTrial = false; showTheme = false; showBite = false
-                          showGuard = false; showTracks = false
+                          showGuard = false; showTracks = false; showView = false
                       },
                   )
               },
@@ -249,6 +256,8 @@ fun RadarScreen() {
                                 orientation = display.orientation,          // wire the orientation control to echoes
                                 headingDeg = ownShipState.headingDeg,       // so north-up/course-up actually rotate
                                 courseDeg = ownShipState.cogDeg,
+                                centerOffsetX = viewOff.x,                  // 偏心显示(O 键)
+                                centerOffsetY = viewOff.y,
                             ),
                         )
                     }
@@ -262,6 +271,7 @@ fun RadarScreen() {
                         ownShip = ownShipFlow,
                         rangeScaleNm = display.rangeScaleNm,
                         orientation = display.orientation,              // targets follow the same orientation
+                        centerOffset = Offset(viewOff.x, viewOff.y),   // 偏心:目标随本船移位
                         // 过去航迹由 H 键的时长驱动(复用现有 A.823 航迹,非冗余系统)。
                         config = OverlayConfig(
                             showTrails = trackLength.enabled,
@@ -282,7 +292,10 @@ fun RadarScreen() {
                             val wPx = with(d) { maxWidth.toPx() }
                             val hPx = with(d) { maxHeight.toPx() }
                             GuardZoneOverlay(
-                                center = Offset(wPx / 2f, hPx / 2f),
+                                center = Offset(
+                                    wPx / 2f + viewOff.x * com.shipradar.app.ppi.PpiLayout.operationalRadiusPx(wPx, hPx, d.density),
+                                    hPx / 2f + viewOff.y * com.shipradar.app.ppi.PpiLayout.operationalRadiusPx(wPx, hPx, d.density),
+                                ),
                                 radiusPx = com.shipradar.app.ppi.PpiLayout.operationalRadiusPx(wPx, hPx, d.density),
                                 rangeScaleNm = display.rangeScaleNm,
                                 orientation = display.orientation,
@@ -320,7 +333,10 @@ fun RadarScreen() {
                         val wPx = with(d) { maxWidth.toPx() }
                         val hPx = with(d) { maxHeight.toPx() }
                         RadarInputLayer(
-                            center = Offset(wPx / 2f, hPx / 2f),
+                            center = Offset(
+                                wPx / 2f + viewOff.x * com.shipradar.app.ppi.PpiLayout.operationalRadiusPx(wPx, hPx, d.density),
+                                hPx / 2f + viewOff.y * com.shipradar.app.ppi.PpiLayout.operationalRadiusPx(wPx, hPx, d.density),
+                            ),
                             radiusPx = com.shipradar.app.ppi.PpiLayout.operationalRadiusPx(wPx, hPx, d.density),
                             orientation = display.orientation,
                             rangeScaleNm = display.rangeScaleNm,
@@ -380,6 +396,10 @@ fun RadarScreen() {
         // 过去航迹 时长(H)—— 驱动现有 TargetOverlay 航迹。
         if (showTracks) DismissOverlay({ showTracks = false }) {
             TracksControlPanel(length = trackLength, onLengthChange = { trackLength = it })
+        }
+        // 偏心显示 / 真运动复位(O)。
+        if (showView) DismissOverlay({ showView = false }) {
+            ViewControlPanel(state = viewCtl)
         }
       }
     }

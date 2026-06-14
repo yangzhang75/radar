@@ -62,6 +62,8 @@ fun TargetOverlay(
     modifier: Modifier = Modifier.fillMaxSize(),
     orientation: PpiOrientation = PpiOrientation.HEAD_UP,
     config: OverlayConfig = OverlayConfig(),
+    // 偏心显示偏移(**归一化**,半径分数,+x 右 +y 下);内部乘本层半径,与 PpiView 共用同一本船中心。
+    centerOffset: Offset = Offset.Zero,
 ) {
     val targetList by targets.collectAsState()
     val ship by ownShip.collectAsState()
@@ -79,7 +81,7 @@ fun TargetOverlay(
         val radius = com.shipradar.app.ppi.PpiLayout.operationalRadiusPx(size.width, size.height, density).toDouble()
         if (radius <= 0.0) return@Canvas
         val projection = PpiProjection.create(
-            center = ScreenPoint(size.width / 2.0, size.height / 2.0),
+            center = ScreenPoint(size.width / 2.0 + centerOffset.x * radius, size.height / 2.0 + centerOffset.y * radius),
             radiusPx = radius,
             orientation = orientation,
             headingDeg = ship.headingDeg,

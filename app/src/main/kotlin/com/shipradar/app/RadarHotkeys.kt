@@ -53,6 +53,7 @@ fun handleControlKey(
     onToggleBite: () -> Unit,
     onToggleGuard: () -> Unit,
     onToggleTracks: () -> Unit,
+    onToggleView: () -> Unit,
     onToggleHelp: () -> Unit,
     onCloseHelp: () -> Unit,
 ): Boolean {
@@ -105,6 +106,7 @@ fun handleControlKey(
         // 报警圈/捕获区 设置 / 过去航迹 控制
         Key.Z -> onToggleGuard()
         Key.H -> onToggleTracks()
+        Key.O -> onToggleView() // 偏心显示 / 真运动复位
         // 快捷键帮助
         Key.F1, Key.Slash -> onToggleHelp()
         Key.Escape -> onCloseHelp()
@@ -141,6 +143,7 @@ private val controlKeys = listOf(
     "B" to "性能监视 / BITE 自检",
     "Z" to "报警圈 / 捕获区 设置",
     "H" to "过去航迹 时长 (OFF/1/3/6 min)",
+    "O" to "偏心显示 / 真运动复位",
     "F1  ?" to "显示 / 隐藏本帮助",
 )
 private val cursorKeys = listOf(
