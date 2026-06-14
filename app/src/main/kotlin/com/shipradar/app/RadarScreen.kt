@@ -35,10 +35,14 @@ import com.shipradar.app.framework.ObTheme
 import com.shipradar.app.framework.OpenBridgeTheme
 import com.shipradar.app.bite.BiteMapping
 import com.shipradar.app.bite.BitePanel
+import com.shipradar.app.autoacq.AcqZone
+import com.shipradar.app.autoacq.AcqZoneOverlay
+import com.shipradar.app.autoacq.AcqZoneSetupPanel
 import com.shipradar.app.guardzone.GuardZone
 import com.shipradar.app.guardzone.GuardZoneModel
 import com.shipradar.app.guardzone.GuardZoneOverlay
 import com.shipradar.app.guardzone.GuardZoneSetupPanel
+import com.shipradar.app.replay.ReplayFeed
 import com.shipradar.app.infopanel.PpiDataBoxes
 import com.shipradar.app.theme.ThemePanel
 import com.shipradar.app.theme.rememberThemeState
@@ -89,6 +93,7 @@ fun RadarScreen() {
     //   LIVE:       真 RadarCommsEngine(Android 组播传输) → 接入同段网络上的真雷达 / HALO 发生器。
     // 两条源都走真解析管线,只是字节来源不同;切换时停掉另一侧。默认进入模拟(无硬件时仍可演示)。
     var live by remember { mutableStateOf(false) }
+    var replay by remember { mutableStateOf(false) } // 真数据回放(J):on=ReplayFeed 真录像,off=DemoFeed 合成
     val ctx = LocalContext.current
     // 高实时性:真实数据接口的摄取跑在专用提升优先级线程池上(与 UI 线程隔离),不阻塞合成、不丢帧。
     // 生产环境由前台 RadarCommsService 承接同一引擎;此处内联引擎用同样的实时调度纪律。
@@ -99,8 +104,12 @@ fun RadarScreen() {
     // LIVE:实际数据接口 profile(法定 236.6.7.x 端口),实时调度摄取。
     val engine = remember { RadarCommsEngine(AndroidMulticastTransport(ctx), CommsConfig.actual(), ingestScope) }
 
-    // DemoFeed 仅在模拟模式喂数据;切到 LIVE 时取消(键控于 live)。
-    LaunchedEffect(live) { if (!live) DemoFeed.run(router) }
+    // 模拟侧数据源:replay=真录像(ReplayFeed)/ 否则=合成(DemoFeed);LIVE 时都不喂(走 engine)。
+    LaunchedEffect(live, replay) {
+        if (!live) {
+            if (replay) ReplayFeed.run(router, ctx.assets) else DemoFeed.run(router)
+        }
+    }
     // 真组播引擎仅在 LIVE 模式收发(握手 / 看门狗 / 解析);切回 SIM 时关闭释放组播锁。
     DisposableEffect(live) {
         if (live) engine.start()
@@ -150,6 +159,9 @@ fun RadarScreen() {
     var showView by remember { mutableStateOf(false) }
     val viewCtl = rememberViewControlState()
     val viewOff = viewCtl.effectiveOffset // ViewOffset(x,y) 归一化(半径分数)
+    // 自动捕获区(C 键):hoisted,面板编辑 + PPI 叠加共用。
+    var showAcq by remember { mutableStateOf(false) }
+    var acqZones by remember { mutableStateOf(List(2) { AcqZone(id = it) }) }
     // 过去航迹时长(H 键调):驱动现有 TargetOverlay 航迹(showTrails/maxTrailPoints),不另起冗余系统。
     var trackLength by remember { mutableStateOf(TrackLength.MIN_3) }
     // 昼/黄昏/夜 + 亮度(W6-B):hoist 一次,驱动全局 OpenBridgeTheme;面板由 K 键浮层调节。
@@ -181,12 +193,15 @@ fun RadarScreen() {
                       onToggleGuard = { showGuard = !showGuard },
                       onToggleTracks = { showTracks = !showTracks },
                       onToggleView = { showView = !showView },
+                      onToggleReplay = { replay = !replay },
+                      onToggleAcq = { showAcq = !showAcq },
                       onToggleHelp = { showHelp = !showHelp },
                       // Esc 关闭任意打开的浮层。
                       onCloseHelp = {
                           showHelp = false; showMonitor = false
                           showTrial = false; showTheme = false; showBite = false
                           showGuard = false; showTracks = false; showView = false
+                          showAcq = false
                       },
                   )
               },
@@ -247,8 +262,8 @@ fun RadarScreen() {
                         )
                     }
                 } else {
-                    // key(live):切换数据源时重建 PPI,清空持久回波位图,避免模拟回波残留进 LIVE(反之亦然)。
-                    androidx.compose.runtime.key(live) {
+                    // key(live, replay):切换数据源(SIM/REPLAY/LIVE)时重建 PPI,清空持久回波位图。
+                    androidx.compose.runtime.key(live, replay) {
                         PpiSurface(
                             spokes = spokes,
                             config = PpiConfig(
@@ -306,9 +321,27 @@ fun RadarScreen() {
                             )
                         }
                     }
+                    // 自动捕获区轮廓(仅启用的区),与 C 键面板共用同一份 zones。
+                    if (acqZones.any { it.enabled }) {
+                        BoxWithConstraints(Modifier.fillMaxSize()) {
+                            val d = LocalDensity.current
+                            val wPx = with(d) { maxWidth.toPx() }
+                            val hPx = with(d) { maxHeight.toPx() }
+                            val rad = com.shipradar.app.ppi.PpiLayout.operationalRadiusPx(wPx, hPx, d.density)
+                            AcqZoneOverlay(
+                                center = Offset(wPx / 2f + viewOff.x * rad, hPx / 2f + viewOff.y * rad),
+                                radiusPx = rad,
+                                rangeScaleNm = display.rangeScaleNm,
+                                orientation = display.orientation,
+                                zones = acqZones.filter { it.enabled },
+                                headingDeg = ownShipState.headingDeg,
+                                courseDeg = ownShipState.cogDeg,
+                            )
+                        }
+                    }
                 }
-                // 模拟模式明显标识(IEC 62388):PPI 顶部居中常驻 "SIMULATION" 横幅,LIVE 时隐藏。
-                if (!live) SimulationBanner()
+                // 模式明显标识(IEC 62388):SIM=模拟横幅,REPLAY=真录像回放横幅,LIVE 时无。
+                if (!live) ModeBanner(if (replay) "● REPLAY 真数据回放" else "● SIMULATION 模拟")
                 // LIVE 常驻链路状态指示(认证要求);右上角。
                 if (live) {
                     androidx.compose.foundation.layout.Box(
@@ -401,6 +434,10 @@ fun RadarScreen() {
         // 偏心显示 / 真运动复位(O)。
         if (showView) DismissOverlay({ showView = false }) {
             ViewControlPanel(state = viewCtl)
+        }
+        // 自动捕获区(C)。
+        if (showAcq) DismissOverlay({ showAcq = false }) {
+            AcqZoneSetupPanel(zones = acqZones, onZonesChange = { acqZones = it })
         }
       }
     }
@@ -512,9 +549,9 @@ private fun DismissOverlay(onDismiss: () -> Unit, content: @Composable () -> Uni
     }
 }
 
-/** 模拟模式横幅 — IEC 62388 要求模拟/测试模式必须明显、常驻标识。PPI 顶部居中,琥珀色。 */
+/** 模式横幅 — IEC 62388 要求模拟/测试/回放模式必须明显、常驻标识。PPI 顶部居中,琥珀色。 */
 @Composable
-private fun androidx.compose.foundation.layout.BoxScope.SimulationBanner() {
+private fun androidx.compose.foundation.layout.BoxScope.ModeBanner(text: String) {
     androidx.compose.foundation.layout.Box(
         Modifier
             .align(androidx.compose.ui.Alignment.TopCenter)
@@ -523,7 +560,7 @@ private fun androidx.compose.foundation.layout.BoxScope.SimulationBanner() {
             .padding(horizontal = 12.dp, vertical = 3.dp),
     ) {
         androidx.compose.material3.Text(
-            "● SIMULATION 模拟",
+            text,
             color = androidx.compose.ui.graphics.Color(0xFFFFF1D6),
             fontSize = 13.sp,
             fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,

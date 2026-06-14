@@ -54,6 +54,8 @@ fun handleControlKey(
     onToggleGuard: () -> Unit,
     onToggleTracks: () -> Unit,
     onToggleView: () -> Unit,
+    onToggleReplay: () -> Unit,
+    onToggleAcq: () -> Unit,
     onToggleHelp: () -> Unit,
     onCloseHelp: () -> Unit,
 ): Boolean {
@@ -107,6 +109,8 @@ fun handleControlKey(
         Key.Z -> onToggleGuard()
         Key.H -> onToggleTracks()
         Key.O -> onToggleView() // 偏心显示 / 真运动复位
+        Key.J -> onToggleReplay() // 真数据回放(模拟侧)
+        Key.C -> onToggleAcq()    // 自动捕获区
         // 快捷键帮助
         Key.F1, Key.Slash -> onToggleHelp()
         Key.Escape -> onCloseHelp()
@@ -144,6 +148,8 @@ private val controlKeys = listOf(
     "Z" to "报警圈 / 捕获区 设置",
     "H" to "过去航迹 时长 (OFF/1/3/6 min)",
     "O" to "偏心显示 / 真运动复位",
+    "J" to "真数据回放 (录像→PPI)",
+    "C" to "自动捕获区 设置",
     "F1  ?" to "显示 / 隐藏本帮助",
 )
 private val cursorKeys = listOf(
