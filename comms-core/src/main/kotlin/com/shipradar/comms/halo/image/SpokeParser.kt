@@ -39,6 +39,13 @@ object SpokeParser {
     /** 辐条头固定长度（字节）。 */
     const val HEADER_BYTES = 24
 
+    /**
+     * 数据包帧头长度（字节）。doc §辐条(Spoke)分配：`Spoke[32]` 数组前有 8 字节 `0100 0000 0020 0002`。
+     * 其精确字段语义文档未命名（halofeed 的 TODO 已挂"待张建/厂商确认"），故本解析器**不解析帧头字段**，
+     * 只在确实存在时跳过它（见 [parseDetailed] 的帧头探测）。
+     */
+    const val FRAME_PREAMBLE_BYTES = 8
+
     /** 文档/SDK 仅定义 4-bit 采样的字节装填规则；其它位宽未规定，遇到则跳过（见 [Result.skipped]）。 */
     private const val SUPPORTED_BITS_PER_SAMPLE = 4
 
@@ -65,6 +72,17 @@ object SpokeParser {
         var skipped = 0
         var off = 0
         val n = packet.size
+
+        // 帧头探测(doc §辐条分配:Spoke[32] 前 8 字节 `0100 0000 0020 0002`)。语义待确认,故只跳过不解析。
+        // 规则:若起点 0 不像合法辐条头、而跳过 8 字节后才像,则判定带帧头并跳过。这样对"带帧头(真雷达/
+        // halofeed)"与"无帧头(SDK 去帧/单测裸辐条)"两种输入都正确。文档的 preamble 首字节 0x01 → spokeLength=1
+        // (<24,非法),天然不会被误判为辐条头。
+        if (n >= HEADER_BYTES + FRAME_PREAMBLE_BYTES &&
+            !plausibleSpokeAt(packet, 0, n) &&
+            plausibleSpokeAt(packet, FRAME_PREAMBLE_BYTES, n)
+        ) {
+            off = FRAME_PREAMBLE_BYTES
+        }
 
         while (off + HEADER_BYTES <= n) {
             val w0 = u32le(packet, off)
@@ -142,6 +160,13 @@ object SpokeParser {
             out[i] = (if (i and 1 == 0) b and 0x0F else (b ushr 4) and 0x0F).toByte()
         }
         return out
+    }
+
+    /** 某偏移处是否像一个合法辐条头：spokeLength 字段在 [24, 余下字节] 内。用于帧头探测。 */
+    private fun plausibleSpokeAt(packet: ByteArray, off: Int, n: Int): Boolean {
+        if (off + HEADER_BYTES > n) return false
+        val spokeLength = bits(u32le(packet, off), 0, 12)
+        return spokeLength in HEADER_BYTES..(n - off)
     }
 
     /** 读小端 uint32（用 Long 承载以免符号问题）。 */

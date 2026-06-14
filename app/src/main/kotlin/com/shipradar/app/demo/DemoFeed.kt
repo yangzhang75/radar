@@ -22,6 +22,11 @@ object DemoFeed {
     private const val N = 1024 // samples/spoke
     private const val OVER_SCAN = 1.8
 
+    // 数据包帧头(doc §辐条分配:Spoke[32] 数组前的 8 字节 `0100 0000 0020 0002`)。与真线缆 + halofeed
+    // (tools/halofeed SpokePacket.FRAME_PREAMBLE)一致;SpokeParser 会探测并跳过它。语义待张建确认。
+    private val FRAME_PREAMBLE = byteArrayOf(0x01, 0x00, 0x00, 0x00, 0x00, 0x20, 0x00, 0x02)
+    private const val PRE = 8 // FRAME_PREAMBLE.size
+
     /** Drive [router] forever: a rotating echo picture + a slowly-changing own-ship fix. */
     suspend fun run(router: CommsRouter) {
         var spoke = 0
@@ -62,16 +67,17 @@ object DemoFeed {
 
         val enc = if (doppler) 1 else 0
         val azRaw = (4096.0 * spokeIndex / SPOKES_PER_REV).toInt() and 0x1FFF
-        val out = ByteArray(24 + N / 2)
+        val out = ByteArray(PRE + 24 + N / 2)
+        FRAME_PREAMBLE.copyInto(out, 0) // 8 字节包帧头(辐条数组之前)
         // word0: spokeLength(12) | seq(16..27) | encoding(28..29)
-        putLe(out, 0, (536 and 0xFFF) or ((seq and 0xFFF) shl 16) or ((enc and 0x3) shl 28))
+        putLe(out, PRE + 0, (536 and 0xFFF) or ((seq and 0xFFF) shl 16) or ((enc and 0x3) shl 28))
         // word1: nOfSamples(0..11) | bitsPerSample(12..15) | rangeCellSize_mm(16..31)
-        putLe(out, 4, (N and 0xFFF) or ((4 and 0xF) shl 12) or ((1500 and 0xFFFF) shl 16))
+        putLe(out, PRE + 4, (N and 0xFFF) or ((4 and 0xF) shl 12) or ((1500 and 0xFFFF) shl 16))
         // word2: azimuth(0..12) | compassInvalid(bit31)=1 (demo has no heading sensor on the spoke)
-        putLe(out, 8, azRaw or (1 shl 31))
+        putLe(out, PRE + 8, azRaw or (1 shl 31))
         // word3: rangeCellsDiv2(0..15); words4,5 reserved=0
-        putLe(out, 12, 512 and 0xFFFF)
-        var p = 24
+        putLe(out, PRE + 12, 512 and 0xFFFF)
+        var p = PRE + 24
         var i = 0
         while (i < N) { // 4-bit pack, low index = low nibble (matches SpokeParser)
             out[p++] = ((s[i].toInt() and 0xF) or ((s[i + 1].toInt() and 0xF) shl 4)).toByte()
@@ -91,12 +97,13 @@ object DemoFeed {
         if (abs(azimuthDeg - 45.0) < 1.5) for (i in frac(0.12)..frac(0.13)) s[i] = 15  // 近距点目标
         if (abs(azimuthDeg - 160.0) < 1.5) for (i in frac(0.28)..frac(0.29)) s[i] = 15 // 近距点目标
         val azRaw = (4096.0 * spokeIndex / SPOKES_PER_REV).toInt() and 0x1FFF
-        val out = ByteArray(24 + N / 2)
-        putLe(out, 0, (536 and 0xFFF) or ((seq and 0xFFF) shl 16))
-        putLe(out, 4, (N and 0xFFF) or ((4 and 0xF) shl 12) or ((1500 and 0xFFFF) shl 16))
-        putLe(out, 8, azRaw or (1 shl 31))
-        putLe(out, 12, 512 and 0xFFFF)
-        var p = 24
+        val out = ByteArray(PRE + 24 + N / 2)
+        FRAME_PREAMBLE.copyInto(out, 0)
+        putLe(out, PRE + 0, (536 and 0xFFF) or ((seq and 0xFFF) shl 16))
+        putLe(out, PRE + 4, (N and 0xFFF) or ((4 and 0xF) shl 12) or ((1500 and 0xFFFF) shl 16))
+        putLe(out, PRE + 8, azRaw or (1 shl 31))
+        putLe(out, PRE + 12, 512 and 0xFFFF)
+        var p = PRE + 24
         var i = 0
         while (i < N) {
             out[p++] = ((s[i].toInt() and 0xF) or ((s[i + 1].toInt() and 0xF) shl 4)).toByte()

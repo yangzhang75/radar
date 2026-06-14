@@ -51,6 +51,32 @@ class SpokeParserTest {
             leBytes(0) + leBytes(0) + data
     }
 
+    /** 文档帧头：Spoke[32] 数组之前的 8 字节 `0100 0000 0020 0002`（doc §辐条分配）。 */
+    private val FRAME_PREAMBLE = byteArrayOf(0x01, 0x00, 0x00, 0x00, 0x00, 0x20, 0x00, 0x02)
+
+    // ---- 数据包帧头：带帧头(真雷达/halofeed)与无帧头(SDK 去帧/裸辐条)都要正确 ----
+
+    @Test fun skips_documented_frame_preamble_and_parses_spokes() {
+        // 真雷达包 = 8 字节帧头 + 多个辐条。解析器须跳过帧头、解出全部辐条。
+        val a = buildSpoke(IntArray(4) { it }, sequenceNumber = 1, spokeAzimuth = 0)
+        val b = buildSpoke(IntArray(4) { it }, sequenceNumber = 2, spokeAzimuth = 2048)
+        val framed = FRAME_PREAMBLE + a + b
+        val r = SpokeParser.parse(framed)
+        assertEquals(2, r.size, "应跳过 8 字节帧头并解出 2 根辐条")
+        assertEquals(0.0, r[0].azimuthDeg, 1e-9)
+        assertEquals(180.0, r[1].azimuthDeg, 1e-9)
+        assertEquals(1, r[0].sequenceNumber)
+        assertEquals(2, r[1].sequenceNumber)
+    }
+
+    @Test fun parses_bare_packet_without_preamble_unchanged() {
+        // 无帧头输入(裸辐条)不得被误判为帧头而跳过。
+        val a = buildSpoke(IntArray(4) { it }, spokeAzimuth = 1024)
+        val r = SpokeParser.parse(a)
+        assertEquals(1, r.size)
+        assertEquals(90.0, r[0].azimuthDeg, 1e-9)
+    }
+
     // ---- 文档典型值：全字段断言 ----
 
     @Test fun parses_doc_typical_spoke_all_fields() {
