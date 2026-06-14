@@ -2,6 +2,7 @@ package com.shipradar.app.demo
 
 import com.shipradar.comms.iec450.Iec450Group
 import com.shipradar.comms.service.CommsRouter
+import com.shipradar.contract.RadarPowerState
 import kotlinx.coroutines.delay
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -36,6 +37,8 @@ object DemoFeed {
             router.onHaloImage(spokePacket(spoke, seq), now = tick)
             // 双量程: 同步喂 Radar B 一幅近距景象 (独立流, 见 onHaloImageB)。dual-range 画面展示用。
             router.onHaloImageB(spokePacketB(spoke, seq), now = tick)
+            // 状态通道 01C4 ~每2s 一帧(发射态),让 SIM 也走真状态解码(链路监视可见 STATUS 活跃)。
+            if (spoke % 333 == 0) router.onHaloStatus(statusPacket(), now = tick)
             // Periodic own-ship fix. Heading gently yaws ±3° around 087° (realistic — NOT a continuous
             // spin), so the data bar shows live values without the whole picture rotating.
             if (spoke % 64 == 0) {
@@ -109,6 +112,14 @@ object DemoFeed {
             out[p++] = ((s[i].toInt() and 0xF) or ((s[i + 1].toInt() and 0xF) shl 4)).toByte()
             i += 2
         }
+        return out
+    }
+
+    /** HALO 模式状态 01C4(2字节头 01 C4 + 4×uint32 LE:状态/定时/预热/定时计数)。与 halofeed StatusPacket 同格式。 */
+    private fun statusPacket(): ByteArray {
+        val out = ByteArray(2 + 16)
+        out[0] = 0x01; out[1] = 0xC4.toByte()
+        putLe(out, 2, RadarPowerState.TRANSMIT.ordinal) // 状态=发射;6/10/14 偏移保持 0
         return out
     }
 
