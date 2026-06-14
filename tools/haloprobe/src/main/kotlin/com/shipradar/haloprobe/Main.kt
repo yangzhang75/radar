@@ -38,6 +38,11 @@ import kotlin.concurrent.thread
  *   --record    把收到的每个数据报存成抓包,之后可在本机离线回放验证。
  */
 fun main(rawArgs: Array<String>) {
+    // 离线模式:解码一份抓包文本(真雷达录像)→ 真 SpokeParser,验证"符合协议没"。
+    val decodeFile = rawArgs.toList().zipWithNext().firstOrNull { it.first == "--decode-file" }?.second
+        ?: rawArgs.firstOrNull { it.startsWith("--decode-file=") }?.substringAfter('=')
+    if (decodeFile != null) { decodeCapture(decodeFile); return }
+
     val args = ProbeArgs.parse(rawArgs)
     println("=== HALO 探针 (本机直连) ===")
 
@@ -130,6 +135,44 @@ fun main(rawArgs: Array<String>) {
 
 @Volatile private var running = false
 private fun sleep(ms: Long) = runCatching { Thread.sleep(ms) }
+
+// ----------------------------------------------------------------- 离线抓包解码(真数据验证)
+/**
+ * 解码一份"文本 hex 抓包"(每包: `(UDP)src->dst ,N Bytes` + 整 IP 报文的两位十六进制),
+ * 去 IP/UDP 头取 HALO 载荷 → 真 [SpokeParser] 解析,打印结果。用于对**真雷达字节**验证协议一致性。
+ */
+private fun decodeCapture(path: String) {
+    val text = java.io.File(path).readText(Charsets.ISO_8859_1)
+    val blocks = text.split("(UDP)").drop(1)
+    println("=== 离线解码: $path ===")
+    println("UDP 包数: ${blocks.size}")
+    var imgPk = 0; var spokesTotal = 0; var skippedTotal = 0
+    val preamble = byteArrayOf(0x01, 0x00, 0x00, 0x00, 0x00, 0x20, 0x00, 0x02)
+    for ((i, blk) in blocks.withIndex()) {
+        val header = blk.substringBefore('\n').trim()
+        val dst = Regex("->([0-9.]+:[0-9]+)").find(header)?.groupValues?.get(1) ?: "?"
+        val hex = blk.substringAfter('\n')
+        val bytes = Regex("\\b[0-9A-Fa-f]{2}\\b").findAll(hex).map { it.value.toInt(16).toByte() }.toList().toByteArray()
+        if (bytes.size < 28 || (bytes[0].toInt() ushr 4 and 0xF) != 4) { println("[$i] 非 IP 包,跳过"); continue }
+        val ihl = (bytes[0].toInt() and 0x0F) * 4
+        val payload = bytes.copyOfRange(ihl + 8, bytes.size)
+        val isImage = dst.endsWith(":6678") || dst.endsWith(":6656")
+        println("\n[$i] $header")
+        println("    dst=$dst  载荷=${payload.size}B  首8=${payload.take(8).joinToString(" ") { "%02X".format(it) }}")
+        println("    以 8字节帧头开头? ${payload.size >= 8 && payload.copyOfRange(0, 8).contentEquals(preamble)}")
+        if (isImage) {
+            val r = SpokeParser.parseDetailed(payload)
+            imgPk++; spokesTotal += r.spokes.size; skippedTotal += r.skipped
+            println("    SpokeParser → 解出 ${r.spokes.size} 辐条, 跳过 ${r.skipped}")
+            r.spokes.firstOrNull()?.let { println("    首辐条: 方位=%.2f° 采样=${it.samples.size} seq=${it.sequenceNumber} 编码=${it.encoding}".format(it.azimuthDeg)) }
+            r.spokes.lastOrNull()?.let { println("    末辐条: 方位=%.2f° 采样=${it.samples.size}".format(it.azimuthDeg)) }
+            val nonZero = r.spokes.sumOf { s -> s.samples.count { it.toInt() != 0 } }
+            println("    非零采样总数: $nonZero (有回波)")
+        }
+    }
+    println("\n=== 汇总: 图像包 $imgPk, 共解出 $spokesTotal 辐条, 跳过 $skippedTotal ===")
+    if (spokesTotal > 0 && skippedTotal == 0) println("✅ 真雷达图像数据 100% 解析通过 —— 协议一致性验证成功")
+}
 
 // ----------------------------------------------------------------- 握手
 private fun tryHandshake(nif: NetworkInterface?): com.shipradar.comms.halo.handshake.RadarLinkInfo? {
