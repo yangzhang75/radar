@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
@@ -47,7 +48,9 @@ import com.shipradar.comms.service.RealtimeIngest
 import com.shipradar.contract.AlarmEvent
 import com.shipradar.contract.AlarmPriority
 import com.shipradar.contract.AlarmState
+import com.shipradar.contract.RadarCommand
 import com.shipradar.contract.RadarController
+import com.shipradar.uicore.ppi.RangeModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -97,13 +100,14 @@ fun RadarScreen() {
     val ownShipFlow = if (live) engine.ownShip else router.ownShip
     val ownShipState by ownShipFlow.collectAsState()
     val targets = remember { MutableStateFlow(FakeTargets.mixedScene()) }
-    val targetList by (if (live) engine.targets else targets).collectAsState()
+    val targetsFlow = if (live) engine.targets else targets
+    val targetList by targetsFlow.collectAsState()
     val status by (if (live) engine.radarStatus else sim.status).collectAsState()
     val controller: RadarController = if (live) engine else sim
 
-    // 双量程画面 (HALO dual-range / Radar B):并排两幅 PPI,各自量程。B 流见 CommsRouter.echoSpokesB。
+    // 双量程画面 (HALO dual-range / Radar B):并排两幅 PPI,各自量程 + 各自叠加目标。B 流见 echoSpokesB。
     var dualRange by remember { mutableStateOf(false) }
-    val rangeScaleNmB = 1.5 // Radar B 短量程(近距景象)
+    var rangeScaleNmB by remember { mutableStateOf(1.5) } // Radar B 量程,可独立调
     val spokesB = if (live) engine.echoSpokesB else router.echoSpokesB
 
     // Hoisted interaction state so target selection + EBL/VRM drive the info panel and on-PPI boxes.
@@ -164,34 +168,38 @@ fun RadarScreen() {
             // modes slot intentionally empty — controls all live in the side panel; nothing floats over the PPI.
             center = {
                 if (dualRange) {
-                    // 双量程:并排两幅 PPI(RADAR A 远景 / RADAR B 近景),各自量程独立。
+                    // 双量程:并排两幅 PPI,各自量程可独立调、各自叠加目标(RADAR A 主控 / RADAR B)。
                     androidx.compose.foundation.layout.Row(Modifier.fillMaxSize()) {
-                        DualPane("RADAR A", display.rangeScaleNm, Modifier.weight(1f)) {
-                            androidx.compose.runtime.key(live, true) {
-                                PpiSurface(
-                                    spokes = spokes,
-                                    config = PpiConfig(
-                                        rangeScaleNm = display.rangeScaleNm,
-                                        orientation = display.orientation,
-                                        headingDeg = ownShipState.headingDeg,
-                                        courseDeg = ownShipState.cogDeg,
-                                    ),
-                                )
-                            }
-                        }
-                        DualPane("RADAR B", rangeScaleNmB, Modifier.weight(1f)) {
-                            androidx.compose.runtime.key(live, false) {
-                                PpiSurface(
-                                    spokes = spokesB,
-                                    config = PpiConfig(
-                                        rangeScaleNm = rangeScaleNmB,
-                                        orientation = display.orientation,
-                                        headingDeg = ownShipState.headingDeg,
-                                        courseDeg = ownShipState.cogDeg,
-                                    ),
-                                )
-                            }
-                        }
+                        RangePane(
+                            label = "RADAR A", rangeNm = display.rangeScaleNm,
+                            spokes = spokes, targets = targetsFlow, ownShip = ownShipFlow,
+                            orientation = display.orientation,
+                            headingDeg = ownShipState.headingDeg, courseDeg = ownShipState.cogDeg,
+                            live = live, paneKey = true, modifier = Modifier.weight(1f),
+                            onRangeIn = {
+                                val nm = RangeModel.previousRangeScale(display.rangeScaleNm)
+                                if (nm != display.rangeScaleNm) {
+                                    display = display.copy(rangeScaleNm = nm)
+                                    controller.send(RadarCommand.SetRange(RangeModel.nmToMeters(nm).toInt()))
+                                }
+                            },
+                            onRangeOut = {
+                                val nm = RangeModel.nextRangeScale(display.rangeScaleNm)
+                                if (nm != display.rangeScaleNm) {
+                                    display = display.copy(rangeScaleNm = nm)
+                                    controller.send(RadarCommand.SetRange(RangeModel.nmToMeters(nm).toInt()))
+                                }
+                            },
+                        )
+                        RangePane(
+                            label = "RADAR B", rangeNm = rangeScaleNmB,
+                            spokes = spokesB, targets = targetsFlow, ownShip = ownShipFlow,
+                            orientation = display.orientation,
+                            headingDeg = ownShipState.headingDeg, courseDeg = ownShipState.cogDeg,
+                            live = live, paneKey = false, modifier = Modifier.weight(1f),
+                            onRangeIn = { rangeScaleNmB = RangeModel.previousRangeScale(rangeScaleNmB) },
+                            onRangeOut = { rangeScaleNmB = RangeModel.nextRangeScale(rangeScaleNmB) },
+                        )
                     }
                 } else {
                     // key(live):切换数据源时重建 PPI,清空持久回波位图,避免模拟回波残留进 LIVE(反之亦然)。
@@ -266,16 +274,47 @@ fun RadarScreen() {
     }
 }
 
-/** 双量程的单个画面窗格 — 内嵌一幅 PPI,左上角标注雷达通道 + 当前量程。 */
+/**
+ * 双量程的单个画面窗格 — 一幅 PPI + 叠加目标 + 左上角通道/量程标注 + 右上角量程 +/− 按钮。
+ * 双量程模式下单 PPI 的交互层被停用,所以本窗格的按钮处于顶层、可直接点击(各窗格独立调量程)。
+ */
 @Composable
-private fun DualPane(
+private fun RangePane(
     label: String,
     rangeNm: Double,
+    spokes: kotlinx.coroutines.flow.Flow<com.shipradar.contract.EchoSpoke>,
+    targets: kotlinx.coroutines.flow.StateFlow<List<com.shipradar.contract.TrackedTarget>>,
+    ownShip: kotlinx.coroutines.flow.StateFlow<com.shipradar.contract.OwnShipData>,
+    orientation: com.shipradar.uicore.ppi.PpiOrientation,
+    headingDeg: Double?,
+    courseDeg: Double?,
+    live: Boolean,
+    paneKey: Boolean,
+    onRangeIn: () -> Unit,
+    onRangeOut: () -> Unit,
     modifier: Modifier = Modifier,
-    content: @Composable () -> Unit,
 ) {
     androidx.compose.foundation.layout.Box(modifier.fillMaxSize()) {
-        content()
+        // key(live, paneKey):切换数据源/窗格时重建 PPI,清空持久回波位图。
+        androidx.compose.runtime.key(live, paneKey) {
+            PpiSurface(
+                spokes = spokes,
+                config = PpiConfig(
+                    rangeScaleNm = rangeNm,
+                    orientation = orientation,
+                    headingDeg = headingDeg,
+                    courseDeg = courseDeg,
+                ),
+            )
+        }
+        // 叠加目标(同一目标集,各自按本窗格量程投影)。
+        TargetOverlay(
+            targets = targets,
+            ownShip = ownShip,
+            rangeScaleNm = rangeNm,
+            orientation = orientation,
+        )
+        // 通道 + 量程标注(左上)。
         androidx.compose.foundation.layout.Box(
             Modifier
                 .align(androidx.compose.ui.Alignment.TopStart)
@@ -290,6 +329,32 @@ private fun DualPane(
                 fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
             )
         }
+        // 量程 +/− 按钮(右上),各窗格独立调量程。
+        androidx.compose.foundation.layout.Column(
+            Modifier.align(androidx.compose.ui.Alignment.TopEnd).padding(8.dp),
+        ) {
+            RangeStepButton("+", onRangeOut) // 量程放大(更大 NM)
+            androidx.compose.foundation.layout.Spacer(Modifier.padding(2.dp))
+            RangeStepButton("−", onRangeIn)  // 量程缩小
+        }
+    }
+}
+
+@Composable
+private fun RangeStepButton(symbol: String, onClick: () -> Unit) {
+    androidx.compose.foundation.layout.Box(
+        Modifier
+            .padding(vertical = 2.dp)
+            .background(androidx.compose.ui.graphics.Color(0xDD14323A))
+            .clickable { onClick() }
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+    ) {
+        androidx.compose.material3.Text(
+            symbol,
+            color = androidx.compose.ui.graphics.Color(0xFFE6F2F5),
+            fontSize = 16.sp,
+            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+        )
     }
 }
 
