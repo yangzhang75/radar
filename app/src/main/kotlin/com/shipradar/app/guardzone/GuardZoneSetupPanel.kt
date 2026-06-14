@@ -46,13 +46,14 @@ import kotlin.math.roundToInt
 @Composable
 fun GuardZoneSetupPanel(
     controller: RadarController,
+    zones: List<GuardZone>,
+    onZonesChange: (List<GuardZone>) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var zones by remember { mutableStateOf(List(GuardZoneModel.ZONE_COUNT) { GuardZone(zone = it) }) }
     var sensitivity by remember { mutableStateOf(GuardZone(0).sensitivity) }
 
     fun update(index: Int, transform: (GuardZone) -> GuardZone) {
-        zones = zones.toMutableList().also { it[index] = transform(it[index]) }
+        onZonesChange(zones.toMutableList().also { it[index] = transform(it[index]) })
     }
 
     Column(
@@ -158,8 +159,13 @@ private fun AlarmTypeChoice(label: String, selected: Boolean, onClick: () -> Uni
 @Preview(showBackground = true, widthDp = 380, heightDp = 640)
 @Composable
 private fun GuardZoneSetupPanelPreview() {
-    GuardZoneSetupPanel(controller = object : RadarController {
-        override fun send(cmd: RadarCommand) {}
-        override fun send(cmd: TrackCommand) {}
-    })
+    var zones by remember { mutableStateOf(List(GuardZoneModel.ZONE_COUNT) { GuardZone(zone = it) }) }
+    GuardZoneSetupPanel(
+        controller = object : RadarController {
+            override fun send(cmd: RadarCommand) {}
+            override fun send(cmd: TrackCommand) {}
+        },
+        zones = zones,
+        onZonesChange = { zones = it },
+    )
 }

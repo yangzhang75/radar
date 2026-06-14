@@ -35,6 +35,9 @@ import com.shipradar.app.framework.ObTheme
 import com.shipradar.app.framework.OpenBridgeTheme
 import com.shipradar.app.bite.BiteMapping
 import com.shipradar.app.bite.BitePanel
+import com.shipradar.app.guardzone.GuardZone
+import com.shipradar.app.guardzone.GuardZoneModel
+import com.shipradar.app.guardzone.GuardZoneOverlay
 import com.shipradar.app.guardzone.GuardZoneSetupPanel
 import com.shipradar.app.infopanel.PpiDataBoxes
 import com.shipradar.app.theme.ThemePanel
@@ -139,6 +142,8 @@ fun RadarScreen() {
     var showBite by remember { mutableStateOf(false) }
     var showGuard by remember { mutableStateOf(false) }
     var showTracks by remember { mutableStateOf(false) }
+    // 报警圈状态 hoist:面板编辑 + PPI 轮廓共用同一份。
+    var guardZones by remember { mutableStateOf(List(GuardZoneModel.ZONE_COUNT) { GuardZone(zone = it) }) }
     // 过去航迹时长(H 键调):驱动现有 TargetOverlay 航迹(showTrails/maxTrailPoints),不另起冗余系统。
     var trackLength by remember { mutableStateOf(TrackLength.MIN_3) }
     // 昼/黄昏/夜 + 亮度(W6-B):hoist 一次,驱动全局 OpenBridgeTheme;面板由 K 键浮层调节。
@@ -270,6 +275,23 @@ fun RadarScreen() {
                     )
                     // On-PPI data boxes (GAIN/SEA/RAIN top, EBL/VRM bottom, RANGE) — standard IMO layout.
                     PpiDataBoxes(status = status, display = display, model = interaction.model)
+                    // 报警圈轮廓(仅启用的区)画在 PPI 上,与 Z 键面板共用同一份 zones。
+                    if (guardZones.any { it.enabled }) {
+                        BoxWithConstraints(Modifier.fillMaxSize()) {
+                            val d = LocalDensity.current
+                            val wPx = with(d) { maxWidth.toPx() }
+                            val hPx = with(d) { maxHeight.toPx() }
+                            GuardZoneOverlay(
+                                center = Offset(wPx / 2f, hPx / 2f),
+                                radiusPx = com.shipradar.app.ppi.PpiLayout.operationalRadiusPx(wPx, hPx, d.density),
+                                rangeScaleNm = display.rangeScaleNm,
+                                orientation = display.orientation,
+                                zones = guardZones.filter { it.enabled },
+                                headingDeg = ownShipState.headingDeg,
+                                courseDeg = ownShipState.cogDeg,
+                            )
+                        }
+                    }
                 }
                 // 模拟模式明显标识(IEC 62388):PPI 顶部居中常驻 "SIMULATION" 横幅,LIVE 时隐藏。
                 if (!live) SimulationBanner()
@@ -353,7 +375,7 @@ fun RadarScreen() {
         }
         // 报警圈/捕获区 设置(Z)—— 面板向雷达下发 guard-zone 命令。
         if (showGuard) DismissOverlay({ showGuard = false }) {
-            GuardZoneSetupPanel(controller = controller)
+            GuardZoneSetupPanel(controller = controller, zones = guardZones, onZonesChange = { guardZones = it })
         }
         // 过去航迹 时长(H)—— 驱动现有 TargetOverlay 航迹。
         if (showTracks) DismissOverlay({ showTracks = false }) {
