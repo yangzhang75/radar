@@ -58,21 +58,23 @@ import com.shipradar.app.ppi.PpiConfig
 import com.shipradar.app.ppi.PpiSurface
 import com.shipradar.app.target.FakeTargets
 import com.shipradar.app.target.TargetOverlay
-import com.shipradar.comms.service.AndroidMulticastTransport
 import com.shipradar.comms.service.CommsConfig
 import com.shipradar.comms.service.CommsRouter
 import com.shipradar.comms.service.RadarCommsEngine
-import com.shipradar.comms.service.RealtimeIngest
+import com.shipradar.comms.service.RadarCommsService
 import com.shipradar.contract.AlarmEvent
+import com.shipradar.contract.LinkState
+import com.shipradar.contract.OwnShipData
+import com.shipradar.contract.RadarPowerState
+import com.shipradar.contract.RadarStatus
+import com.shipradar.contract.TrackedTarget
 import com.shipradar.contract.AlarmPriority
 import com.shipradar.contract.AlarmState
 import com.shipradar.contract.RadarCommand
 import com.shipradar.contract.RadarController
 import com.shipradar.uicore.ppi.RangeModel
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.emptyFlow
 
 /**
  * Top-level HMI assembly — **OWNED BY THE ORCHESTRATOR**. Wires each third-wave worker's self-contained
@@ -96,42 +98,54 @@ fun RadarScreen() {
     var replay by remember { mutableStateOf(false) } // 真数据回放(J):on=ReplayFeed 真录像,off=DemoFeed 合成
     val ctx = LocalContext.current
     // 高实时性:真实数据接口的摄取跑在专用提升优先级线程池上(与 UI 线程隔离),不阻塞合成、不丢帧。
-    // 生产环境由前台 RadarCommsService 承接同一引擎;此处内联引擎用同样的实时调度纪律。
-    val ingestScope = remember { CoroutineScope(SupervisorJob() + RealtimeIngest.dispatcher()) }
-
-    val router = remember { CommsRouter(CommsConfig()) }            // SIM 解析器
+    val router = remember { CommsRouter(CommsConfig()) }            // SIM/REPLAY 解析器
     val sim = remember { SimRadar() }                              // SIM 控制/状态回路
-    // LIVE:实际数据接口 profile(法定 236.6.7.x 端口),实时调度摄取。
-    val engine = remember { RadarCommsEngine(AndroidMulticastTransport(ctx), CommsConfig.actual(), ingestScope) }
 
-    // 模拟侧数据源:replay=真录像(ReplayFeed)/ 否则=合成(DemoFeed);LIVE 时都不喂(走 engine)。
+    // LIVE = 生产数据路径:绑定前台 RadarCommsService(它在专用实时调度上承接真组播 + 看门狗,
+    // 进程被杀也续命)。SIM/REPLAY 完全走 router,不碰服务。boundEngine 在服务连接后可用。
+    var boundEngine by remember { mutableStateOf<RadarCommsEngine?>(null) }
+    val serviceConn = remember {
+        object : android.content.ServiceConnection {
+            override fun onServiceConnected(n: android.content.ComponentName?, b: android.os.IBinder?) {
+                boundEngine = (b as? RadarCommsService.LocalBinder)?.radarEngine
+            }
+            override fun onServiceDisconnected(n: android.content.ComponentName?) { boundEngine = null }
+        }
+    }
+    DisposableEffect(live) {
+        if (live) {
+            RadarCommsService.start(ctx, com.shipradar.constants.DataInterfaceProfile.ACTUAL)
+            ctx.bindService(android.content.Intent(ctx, RadarCommsService::class.java), serviceConn, android.content.Context.BIND_AUTO_CREATE)
+        }
+        onDispose { if (live) { runCatching { ctx.unbindService(serviceConn) }; boundEngine = null } }
+    }
+    // LIVE 服务未连/无数据时的回退流。
+    val liveOwnShip = remember { MutableStateFlow(OwnShipData()) }
+    val liveTargets = remember { MutableStateFlow(emptyList<TrackedTarget>()) }
+    val liveStatus = remember { MutableStateFlow(RadarStatus(powerState = RadarPowerState.OFF)) }
+    val liveLink = remember { MutableStateFlow(LinkState.DISCONNECTED) }
+
+    // 模拟侧数据源:replay=真录像(ReplayFeed)/ 否则=合成(DemoFeed);LIVE 走绑定服务。
     LaunchedEffect(live, replay) {
         if (!live) {
             if (replay) ReplayFeed.run(router, ctx.assets) else DemoFeed.run(router)
         }
     }
-    // 真组播引擎仅在 LIVE 模式收发(握手 / 看门狗 / 解析);切回 SIM 时关闭释放组播锁。
-    DisposableEffect(live) {
-        if (live) engine.start()
-        onDispose { if (live) engine.stop() }
-    }
-    // 屏幕销毁时取消实时摄取 scope,回收专用线程池。
-    DisposableEffect(Unit) { onDispose { ingestScope.cancel() } }
 
-    // 按模式选择数据源(SIM=router/sim/假目标 ; LIVE=engine 真总线流)。
-    val spokes = if (live) engine.echoSpokes else router.echoSpokes
-    val ownShipFlow = if (live) engine.ownShip else router.ownShip
+    // 按模式选择数据源(SIM/REPLAY=router/sim ; LIVE=绑定服务 engine,连接前回退)。
+    val spokes = if (live) (boundEngine?.echoSpokes ?: emptyFlow()) else router.echoSpokes
+    val ownShipFlow = if (live) (boundEngine?.ownShip ?: liveOwnShip) else router.ownShip
     val ownShipState by ownShipFlow.collectAsState()
     val targets = remember { MutableStateFlow(FakeTargets.mixedScene()) }
-    val targetsFlow = if (live) engine.targets else targets
+    val targetsFlow = if (live) (boundEngine?.targets ?: liveTargets) else targets
     val targetList by targetsFlow.collectAsState()
-    val status by (if (live) engine.radarStatus else sim.status).collectAsState()
-    val controller: RadarController = if (live) engine else sim
+    val status by (if (live) (boundEngine?.radarStatus ?: liveStatus) else sim.status).collectAsState()
+    val controller: RadarController = if (live) (boundEngine ?: sim) else sim
 
     // 双量程画面 (HALO dual-range / Radar B):并排两幅 PPI,各自量程 + 各自叠加目标。B 流见 echoSpokesB。
     var dualRange by remember { mutableStateOf(false) }
     var rangeScaleNmB by remember { mutableStateOf(1.5) } // Radar B 量程,可独立调
-    val spokesB = if (live) engine.echoSpokesB else router.echoSpokesB
+    val spokesB = if (live) (boundEngine?.echoSpokesB ?: emptyFlow()) else router.echoSpokesB
 
     // Hoisted interaction state so target selection + EBL/VRM drive the info panel and on-PPI boxes.
     val interaction = rememberRadarInteractionState()
@@ -168,7 +182,7 @@ fun RadarScreen() {
     val themeState = rememberThemeState()
     // 链路监视数据源(SIM=router 计数 / LIVE=engine 计数);两者都有 dataLinkSnapshot。
     val linkSnapshot: (Long) -> com.shipradar.comms.service.DataLinkStats =
-        if (live) engine::dataLinkSnapshot else router::dataLinkSnapshot
+        if (live) { now -> boundEngine?.dataLinkSnapshot(now) ?: router.dataLinkSnapshot(now) } else router::dataLinkSnapshot
 
     OpenBridgeTheme(theme = themeState.mode.toObTheme()) {
       // 屏幕根部 onPreviewKeyEvent:先消费雷达控制级快捷键(量程/发射/增益/定向/运动/SIM-LIVE/帮助),
@@ -283,7 +297,7 @@ fun RadarScreen() {
                 // 单量程才叠加目标/数据框(双量程的并排 PPI 自带各自标签,布局不同)。
                 if (!dualRange) {
                     TargetOverlay(
-                        targets = if (live) engine.targets else targets,
+                        targets = if (live) (boundEngine?.targets ?: liveTargets) else targets,
                         ownShip = ownShipFlow,
                         rangeScaleNm = display.rangeScaleNm,
                         orientation = display.orientation,              // targets follow the same orientation
@@ -351,7 +365,7 @@ fun RadarScreen() {
                             .background(androidx.compose.ui.graphics.Color(0xCC0B1418))
                             .padding(horizontal = 8.dp, vertical = 3.dp),
                     ) {
-                        val ls by (if (live) engine.linkState else router.linkState).collectAsState()
+                        val ls by (if (live) (boundEngine?.linkState ?: liveLink) else router.linkState).collectAsState()
                         BoxScopeLinkChip(ls)
                     }
                 }

@@ -38,6 +38,8 @@ class RadarCommsService : Service() {
     inner class LocalBinder : Binder() {
         val dataBus: RadarDataBus? get() = engine
         val controller: RadarController? get() = engine
+        /** 完整引擎(含双量程 echoSpokesB + 链路诊断 dataLinkSnapshot,非契约附加能力)。 */
+        val radarEngine: RadarCommsEngine? get() = engine
     }
 
     override fun onCreate() {
