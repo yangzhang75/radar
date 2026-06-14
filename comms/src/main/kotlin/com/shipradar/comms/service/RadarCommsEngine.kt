@@ -53,6 +53,8 @@ class RadarCommsEngine(
     override val echoSpokes: Flow<EchoSpoke> get() = router.echoSpokes
     /** 双量程 Radar B 回波流 (非 RadarDataBus 契约的一部分,引擎附加能力)。 */
     val echoSpokesB: Flow<EchoSpoke> get() = router.echoSpokesB
+    /** 数据链路监视快照(诊断用,见 [DataLinkStats])。 */
+    fun dataLinkSnapshot(nowMs: Long): DataLinkStats = router.dataLinkSnapshot(nowMs)
     override val targets: StateFlow<List<TrackedTarget>> get() = router.targets
     override val ownShip: StateFlow<OwnShipData> get() = router.ownShip
     override val radarStatus: StateFlow<RadarStatus> get() = router.radarStatus

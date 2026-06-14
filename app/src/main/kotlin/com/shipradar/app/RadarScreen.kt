@@ -124,6 +124,10 @@ fun RadarScreen() {
     }
 
     var showHelp by remember { mutableStateOf(false) }
+    var showMonitor by remember { mutableStateOf(false) }
+    // 链路监视数据源(SIM=router 计数 / LIVE=engine 计数);两者都有 dataLinkSnapshot。
+    val linkSnapshot: (Long) -> com.shipradar.comms.service.DataLinkStats =
+        if (live) engine::dataLinkSnapshot else router::dataLinkSnapshot
 
     OpenBridgeTheme(ObTheme.DAY) {
       // 屏幕根部 onPreviewKeyEvent:先消费雷达控制级快捷键(量程/发射/增益/定向/运动/SIM-LIVE/帮助),
@@ -141,6 +145,7 @@ fun RadarScreen() {
                       status = status,
                       onToggleLive = { live = !live },
                       onToggleDual = { dualRange = !dualRange },
+                      onToggleMonitor = { showMonitor = !showMonitor },
                       onToggleHelp = { showHelp = !showHelp },
                       onCloseHelp = { showHelp = false },
                   )
@@ -230,6 +235,19 @@ fun RadarScreen() {
                 }
                 // 模拟模式明显标识(IEC 62388):PPI 顶部居中常驻 "SIMULATION" 横幅,LIVE 时隐藏。
                 if (!live) SimulationBanner()
+                // LIVE 常驻链路状态指示(认证要求);右上角。
+                if (live) {
+                    androidx.compose.foundation.layout.Box(
+                        Modifier
+                            .align(androidx.compose.ui.Alignment.TopEnd)
+                            .padding(8.dp)
+                            .background(androidx.compose.ui.graphics.Color(0xCC0B1418))
+                            .padding(horizontal = 8.dp, vertical = 3.dp),
+                    ) {
+                        val ls by (if (live) engine.linkState else router.linkState).collectAsState()
+                        BoxScopeLinkChip(ls)
+                    }
+                }
             },
             alarms = { AlarmBar(uiState = alarms, controller = NoopAlarmController) },
             // T2.5 interaction layer over the PPI: measure the operational area so touch/key/mouse
@@ -270,6 +288,8 @@ fun RadarScreen() {
         )
         // 快捷键帮助浮层(F1 / ? 切换),覆盖全屏。
         if (showHelp) HotkeyHelpOverlay(onDismiss = { showHelp = false })
+        // 数据链路监视浮层(L 切换)。
+        if (showMonitor) LinkMonitorOverlay(snapshot = linkSnapshot, onDismiss = { showMonitor = false })
       }
     }
 }

@@ -47,6 +47,7 @@ fun handleControlKey(
     status: RadarStatus,
     onToggleLive: () -> Unit,
     onToggleDual: () -> Unit,
+    onToggleMonitor: () -> Unit,
     onToggleHelp: () -> Unit,
     onCloseHelp: () -> Unit,
 ): Boolean {
@@ -90,6 +91,8 @@ fun handleControlKey(
         Key.S -> onToggleLive()
         // 单量程 / 双量程画面
         Key.D -> onToggleDual()
+        // 数据链路监视
+        Key.L -> onToggleMonitor()
         // 快捷键帮助
         Key.F1, Key.Slash -> onToggleHelp()
         Key.Escape -> onCloseHelp()
@@ -120,6 +123,7 @@ private val controlKeys = listOf(
     "M" to "运动模式 相对 / 真 (RM/TM)",
     "S" to "数据源 模拟 / 实时 (SIM/LIVE)",
     "D" to "单量程 / 双量程画面 (Radar B)",
+    "L" to "数据链路监视 (LINK MONITOR)",
     "F1  ?" to "显示 / 隐藏本帮助",
 )
 private val cursorKeys = listOf(

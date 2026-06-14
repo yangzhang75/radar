@@ -113,10 +113,32 @@ class CommsRouter(config: CommsConfig) {
     var aisDeferred = 0L; private set
     fun seqStats(): SeqStats = seqTracker.stats()
 
+    // 链路监视计数(每通道收包数 + 最后到包时刻 ms),供 LIVE 诊断界面轮询。轻量 @Volatile,不走 Flow。
+    @Volatile private var echoPkts = 0L;   @Volatile private var echoLast = 0L
+    @Volatile private var echoBPkts = 0L;  @Volatile private var echoBLast = 0L
+    @Volatile private var statusPkts = 0L; @Volatile private var statusLast = 0L
+    @Volatile private var targetPkts = 0L; @Volatile private var targetLast = 0L
+    @Volatile private var iec450Pkts = 0L; @Volatile private var iec450Last = 0L
+
+    /** 链路状态快照(各通道收包/时延 + 回波序列完整性 + 450 丢弃)。UI 按需轮询并据此算速率。 */
+    fun dataLinkSnapshot(nowMs: Long): DataLinkStats = DataLinkStats(
+        nowMs = nowMs,
+        linkState = _linkState.value,
+        echo = ChannelStat(echoPkts, echoLast),
+        echoB = ChannelStat(echoBPkts, echoBLast),
+        status = ChannelStat(statusPkts, statusLast),
+        target = ChannelStat(targetPkts, targetLast),
+        iec450 = ChannelStat(iec450Pkts, iec450Last),
+        seq = seqTracker.stats(),
+        discards = discardCounters,
+        aisDeferred = aisDeferred,
+    )
+
     // ------------------------------------------------------------------ HALO inbound
 
     /** HALO echo image datagram (236.6.7.8). Returns liveness actions for the engine to execute. */
     fun onHaloImage(bytes: ByteArray, now: Long): List<LinkAction> {
+        echoPkts++; echoLast = now
         for (spoke in spokeParser.parse(bytes)) {
             // Drop retransmit duplicates; everything else (in-order / gap / reordered) reaches the renderer.
             if (seqTracker.observe(spoke.sequenceNumber) != SeqClass.DUPLICATE) {
@@ -128,6 +150,7 @@ class CommsRouter(config: CommsConfig) {
 
     /** HALO Radar-B echo image datagram (双量程, 236.6.7.13). Parsed identically into the B flow. */
     fun onHaloImageB(bytes: ByteArray, now: Long): List<LinkAction> {
+        echoBPkts++; echoBLast = now
         for (spoke in spokeParser.parse(bytes)) {
             if (seqTrackerB.observe(spoke.sequenceNumber) != SeqClass.DUPLICATE) {
                 _echoSpokesB.tryEmit(spoke)
@@ -138,12 +161,14 @@ class CommsRouter(config: CommsConfig) {
 
     /** HALO status datagram (236.6.7.9): merge onto the running status snapshot. */
     fun onHaloStatus(bytes: ByteArray, now: Long): List<LinkAction> {
+        statusPkts++; statusLast = now
         _radarStatus.value = statusParser.parseStatus(bytes).applyTo(_radarStatus.value)
         return supervisor.onPacket(DataChannel.STATUS, now)
     }
 
     /** HALO tracked-target datagram (236.6.7.18): full radar-TT snapshot. */
     fun onHaloTarget(bytes: ByteArray, now: Long): List<LinkAction> {
+        targetPkts++; targetLast = now
         _targets.value = targetAggregator.replaceRadarSnapshot(targetParser.parseTargets(bytes))
         return supervisor.onPacket(DataChannel.TARGET, now)
     }
@@ -152,6 +177,7 @@ class CommsRouter(config: CommsConfig) {
 
     /** A 61162-450 datagram received on [group]. Extracts sentences and routes each. */
     fun on450(group: Iec450Group, bytes: ByteArray, now: Long): List<LinkAction> {
+        iec450Pkts++; iec450Last = now
         val result = iec450.parse(bytes, group)
         discardCounters += result.discards
         for (ts in result.sentences) routeSentence(ts.rawSentence, now)
