@@ -27,6 +27,7 @@ android {
 dependencies {
     implementation(project(":ui-core"))   // PPI geometry + colour + target logic (pure JVM)
     implementation(project(":comms"))      // Foreground Service + data bus
+    implementation(project(":tools:simcore")) // 传感器/AIS 语句生成核心(模拟器界面用)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)

@@ -25,5 +25,18 @@
             android:exported="false"
             android:screenOrientation="landscape"
             android:configChanges="orientation|screenSize|keyboardHidden" />
+
+        <!-- 传感器数据模拟器(多 AIS/GPS/罗经/风/流/机舱),独立启动图标。 -->
+        <activity
+            android:name="com.shipradar.app.simulator.SimulatorActivity"
+            android:exported="true"
+            android:label="Radar 模拟器"
+            android:screenOrientation="landscape"
+            android:configChanges="orientation|screenSize|keyboardHidden">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
     </application>
 </manifest>
