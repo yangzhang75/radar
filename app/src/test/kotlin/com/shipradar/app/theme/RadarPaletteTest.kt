@@ -32,14 +32,19 @@ class RadarPaletteTest {
     // --- mode mapping (one colour table per ambient condition) ---
 
     @Test
-    fun `ThemeMode maps one to one onto ObTheme and ColorMapper Palette`() {
+    fun `ThemeMode maps onto ObTheme and ColorMapper Palette`() {
         assertEquals(ObTheme.DAY, ThemeMode.DAY.toObTheme())
         assertEquals(ObTheme.DUSK, ThemeMode.DUSK.toObTheme())
         assertEquals(ObTheme.NIGHT, ThemeMode.NIGHT.toObTheme())
         assertEquals(ColorMapper.Palette.DAY, ThemeMode.DAY.toEchoPalette())
         assertEquals(ColorMapper.Palette.NIGHT, ThemeMode.NIGHT.toEchoPalette())
-        assertEquals(ThemeMode.entries.size, ObTheme.entries.size)
-        assertEquals(ThemeMode.entries.size, ColorMapper.Palette.entries.size)
+        // 阴天(OVERCAST)= 白天色板,靠默认亮度区分(非新增色板),故映射到 DAY 的 chrome/echo。
+        assertEquals(ObTheme.DAY, ThemeMode.OVERCAST.toObTheme())
+        assertEquals(ColorMapper.Palette.DAY, ThemeMode.OVERCAST.toEchoPalette())
+        // 三套基础色板仍齐全且各自被某模式使用。
+        assertEquals(3, ObTheme.entries.size)
+        assertEquals(3, ColorMapper.Palette.entries.size)
+        assertEquals(4, ThemeMode.entries.size) // DAY/OVERCAST/DUSK/NIGHT
     }
 
     @Test

@@ -17,11 +17,12 @@ import com.shipradar.uicore.color.ColorMapper
  * panel and radar video share one colour table per condition.
  */
 enum class ThemeMode {
-    DAY, DUSK, NIGHT;
+    DAY, OVERCAST, DUSK, NIGHT;
 
-    /** Framework chrome theme for this mode (the orchestrator passes this to `OpenBridgeTheme`). */
+    /** Framework chrome theme. OVERCAST(阴天)= 白天色板,低眩光/低亮(默认亮度更低,见 defaultBrilliance)。 */
     fun toObTheme(): ObTheme = when (this) {
         DAY -> ObTheme.DAY
+        OVERCAST -> ObTheme.DAY
         DUSK -> ObTheme.DUSK
         NIGHT -> ObTheme.NIGHT
     }
@@ -29,6 +30,7 @@ enum class ThemeMode {
     /** PPI echo palette for this mode (keeps the radar video in lockstep with the chrome). */
     fun toEchoPalette(): ColorMapper.Palette = when (this) {
         DAY -> ColorMapper.Palette.DAY
+        OVERCAST -> ColorMapper.Palette.DAY
         DUSK -> ColorMapper.Palette.DUSK
         NIGHT -> ColorMapper.Palette.NIGHT
     }

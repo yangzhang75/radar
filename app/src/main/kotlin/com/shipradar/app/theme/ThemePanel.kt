@@ -73,6 +73,9 @@ fun ThemePanel(
                 ModeChip("昼 DAY", mode == ThemeMode.DAY, palette, Modifier.weight(1f)) {
                     onModeChange(ThemeMode.DAY)
                 }
+                ModeChip("阴天 OVC", mode == ThemeMode.OVERCAST, palette, Modifier.weight(1f)) {
+                    onModeChange(ThemeMode.OVERCAST)
+                }
                 ModeChip("黄昏 DUSK", mode == ThemeMode.DUSK, palette, Modifier.weight(1f)) {
                     onModeChange(ThemeMode.DUSK)
                 }

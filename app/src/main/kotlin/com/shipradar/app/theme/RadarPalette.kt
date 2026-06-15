@@ -100,6 +100,7 @@ data class RadarPalette(
         /** Default brilliance per mode: full by day, reduced at dusk, low at night (§7.2.1, §4.4.1.1). */
         fun defaultBrilliance(mode: ThemeMode): Float = when (mode) {
             ThemeMode.DAY -> 1.0f
+            ThemeMode.OVERCAST -> 0.75f  // 阴天:白天色,低眩光低亮
             ThemeMode.DUSK -> 0.6f
             ThemeMode.NIGHT -> 0.35f
         }

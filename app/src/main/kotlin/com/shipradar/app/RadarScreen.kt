@@ -181,8 +181,12 @@ fun RadarScreen() {
     var showChart by remember { mutableStateOf(true) }
     // 过去航迹时长(H 键调):驱动现有 TargetOverlay 航迹(showTrails/maxTrailPoints),不另起冗余系统。
     var trackLength by remember { mutableStateOf(TrackLength.MIN_3) }
-    // 昼/黄昏/夜 + 亮度(W6-B):hoist 一次,驱动全局 OpenBridgeTheme;面板由 K 键浮层调节。
+    // 昼/阴天/黄昏/夜 + 亮度(W6-B):hoist 一次,驱动全局 OpenBridgeTheme;面板由 K 键浮层调节。
     val themeState = rememberThemeState()
+    // 亮度 → 硬件 I/O 口 PWM 背光(无硬件则记日志;真机配 SysfsBacklightPwm.pwmPath)。
+    LaunchedEffect(themeState.brilliance) {
+        com.shipradar.app.theme.SysfsBacklightPwm.setBrilliance(themeState.brilliance)
+    }
     // 链路监视数据源(SIM=router 计数 / LIVE=engine 计数);两者都有 dataLinkSnapshot。
     val linkSnapshot: (Long) -> com.shipradar.comms.service.DataLinkStats =
         if (live) { now -> boundEngine?.dataLinkSnapshot(now) ?: router.dataLinkSnapshot(now) } else router::dataLinkSnapshot
