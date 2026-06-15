@@ -51,7 +51,7 @@ fun DataBar(
     Row(
         modifier
             .fillMaxWidth()
-            .background(Color(0xFF0B1418)) // 暗背景，OpenBridge 夜航调色由 T2.9 框架统一
+            .background(com.shipradar.app.framework.OpenBridge.colors.chromeBackground) // 随 OpenBridge 主题
             .horizontalScroll(rememberScrollState())
             .padding(horizontal = 8.dp, vertical = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(14.dp),
@@ -63,26 +63,25 @@ fun DataBar(
 @Composable
 private fun FieldCell(f: DataField) {
     Column {
+        val c = com.shipradar.app.framework.OpenBridge.colors
         Text(
             f.label,
-            color = Color(0xFF7FA6B3),
+            color = c.foregroundSecondary,
             fontSize = 9.sp,
             fontWeight = FontWeight.Medium,
         )
         Text(
             f.value,
-            color = severityColor(f.severity),
+            color = when (f.severity) {
+                FieldSeverity.OK -> c.foregroundPrimary
+                FieldSeverity.DEGRADED -> c.caution
+                FieldSeverity.FAIL -> c.alarm
+            },
             fontSize = 13.sp,
             fontWeight = FontWeight.Bold,
             fontFamily = FontFamily.Monospace,
         )
     }
-}
-
-private fun severityColor(s: FieldSeverity): Color = when (s) {
-    FieldSeverity.OK -> Color(0xFFE6F2F5)
-    FieldSeverity.DEGRADED -> Color(0xFFFFC107) // 琥珀：降级/陈旧
-    FieldSeverity.FAIL -> Color(0xFFFF5252)     // 红：失效/无数据
 }
 
 @Preview(widthDp = 800, showBackground = true)

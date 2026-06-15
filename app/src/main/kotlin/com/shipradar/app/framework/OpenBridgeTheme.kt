@@ -90,6 +90,15 @@ fun OpenBridgeTheme(
         onSurface = colors.foregroundPrimary,
         surfaceVariant = colors.chromeElevated,
         onSurfaceVariant = colors.foregroundSecondary,
+        // surfaceContainer* 槽位:Card/Surface 等 Material3 容器默认取这里。darkColorScheme 的默认值
+        // 在日间是暗的,必须显式映射到 OpenBridge chrome 色,否则浅色主题下控制面板卡片仍发黑。
+        surfaceContainerLowest = colors.chromeBackground,
+        surfaceContainerLow = colors.chromeBackground,
+        surfaceContainer = colors.chromeElevated,
+        surfaceContainerHigh = colors.chromeElevated,
+        surfaceContainerHighest = colors.chromeElevated,
+        secondaryContainer = colors.chromeElevated,
+        onSecondaryContainer = colors.foregroundPrimary,
         outline = colors.chromeBorder,
         error = colors.alarm,
         onError = colors.foregroundPrimary,

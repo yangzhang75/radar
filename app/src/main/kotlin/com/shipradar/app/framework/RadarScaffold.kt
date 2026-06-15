@@ -59,7 +59,8 @@ fun RadarScaffold(
     right: @Composable () -> Unit = {},
 ) {
     val c = OpenBridge.colors
-    Column(modifier = modifier.fillMaxSize().background(c.operationalBackground)) {
+    // chrome 基底用 OpenBridge 容器色(日间浅/夜间黑);只有中间操作区用暗底(IEC 62288 §5.4.1.1)。
+    Column(modifier = modifier.fillMaxSize().background(c.chromeBackground)) {
         // Top permanent data bar.
         top()
         // Middle band: control panel | operational area | right info column.

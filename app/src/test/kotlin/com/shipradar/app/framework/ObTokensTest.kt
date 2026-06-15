@@ -26,15 +26,18 @@ class ObTokensTest {
     private fun red(argb: Int) = (argb ushr 16) and 0xFF
     private fun blue(argb: Int) = argb and 0xFF
 
-    // §4.4.1.1 Table 1 (day 200 / dusk 10 / night darkness cd/m²) + §7.2.1 (maintain dark adaptation):
-    // primary foreground luminance must decrease day → dusk → night.
+    // §7.2.1 (maintain dark adaptation) — with the real OpenBridge 5.0 palettes the *day* theme is a
+    // LIGHT chrome (dark text on light surface) while dusk/night are dark chrome, so raw foreground
+    // luminance is NOT monotone day→dusk→night. The cert-meaningful invariant is that night chrome is
+    // the darkest and near-black, so the bridge stays dark-adapted at night.
     @Test
-    fun `foreground luminance decreases day to dusk to night`() {
-        val day = lum(obTokens(ObTheme.DAY).foregroundPrimary)
-        val dusk = lum(obTokens(ObTheme.DUSK).foregroundPrimary)
-        val night = lum(obTokens(ObTheme.NIGHT).foregroundPrimary)
-        assertTrue(day > dusk, "day($day) > dusk($dusk)")
-        assertTrue(dusk > night, "dusk($dusk) > night($night)")
+    fun `night chrome is darkest and near-black for dark adaptation`() {
+        val day = lum(obTokens(ObTheme.DAY).chromeBackground)
+        val dusk = lum(obTokens(ObTheme.DUSK).chromeBackground)
+        val night = lum(obTokens(ObTheme.NIGHT).chromeBackground)
+        assertTrue(night <= dusk, "night($night) ≤ dusk($dusk)")
+        assertTrue(dusk < day, "dusk($dusk) < day($day) — day is the light OpenBridge chrome")
+        assertTrue(night < 16.0, "night chrome must be near-black (lum=$night)")
     }
 
     // §5.4.1.1 "a dark non-reflecting background shall be used" + §4.5.1 "lighter foreground on a dark
@@ -50,12 +53,17 @@ class ObTokensTest {
         }
     }
 
-    // §4.7.2.1 (MSC191/5.5.2) the colour red shall be used for alarm/emergency-alarm coding.
+    // §4.7.2.1 (MSC191/5.5.2) the colour red shall be used for alarm/emergency-alarm coding. The OB 5.0
+    // day/dusk alarm is #E2231A and night is pure red — both must read as unmistakably red (red channel
+    // dominant: high R, and R well clear of G/B), the relationship 62288 actually pins (it gives no ARGB).
     @Test
-    fun `alarm is pure saturated red in every theme`() {
+    fun `alarm is unmistakably red in every theme`() {
         for (t in ObTheme.entries) {
             val a = obTokens(t).alarm
-            assertTrue(red(a) > 0 && green(a) == 0 && blue(a) == 0, "$t alarm must be pure red, was ${a.toUInt().toString(16)}")
+            assertTrue(
+                red(a) >= 200 && red(a) > 3 * green(a) && red(a) > 3 * blue(a),
+                "$t alarm must be dominant red, was ${a.toUInt().toString(16)}",
+            )
         }
     }
 
@@ -104,13 +112,17 @@ class ObTokensTest {
         assertTrue(alarm >= 2.0 * echo, "alarm red($alarm) must be ≥1:2 brighter than night echo red($echo)")
     }
 
-    // Foreground hierarchy must stay discriminable: primary > secondary > disabled.
+    // Foreground hierarchy must stay discriminable: primary most prominent, disabled least. Measured as
+    // contrast (luminance distance) against the theme's own chrome background, so it holds for both the
+    // light day chrome (dark text) and the dark night chrome (amber text).
     @Test
-    fun `foreground luminance hierarchy primary over secondary over disabled`() {
+    fun `foreground prominence primary over secondary over disabled`() {
         for (t in ObTheme.entries) {
             val tk = obTokens(t)
-            assertTrue(lum(tk.foregroundPrimary) > lum(tk.foregroundSecondary), "$t primary > secondary")
-            assertTrue(lum(tk.foregroundSecondary) > lum(tk.foregroundDisabled), "$t secondary > disabled")
+            val bg = lum(tk.chromeBackground)
+            fun contrast(x: Int) = kotlin.math.abs(lum(x) - bg)
+            assertTrue(contrast(tk.foregroundPrimary) > contrast(tk.foregroundSecondary), "$t primary more prominent than secondary")
+            assertTrue(contrast(tk.foregroundSecondary) > contrast(tk.foregroundDisabled), "$t secondary more prominent than disabled")
         }
     }
 

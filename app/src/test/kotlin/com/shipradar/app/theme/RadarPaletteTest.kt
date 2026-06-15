@@ -58,14 +58,18 @@ class RadarPaletteTest {
         }
     }
 
-    // --- §4.4.1.1 Table 1 + §7.2.1: presentation luminance decreases day → dusk → night ---
+    // --- §7.2.1 dark adaptation: with the real OpenBridge 5.0 palettes day chrome is LIGHT, so raw text
+    // luminance is not monotone day→dusk→night. The cert-meaningful step is that the night chrome surface
+    // is the darkest (the absolute light step down to night is also enforced by defaultBrilliance below). ---
 
     @Test
-    fun `text luminance decreases day to dusk to night`() {
-        val day = lum(radarPalette(ThemeMode.DAY).textPrimary)
-        val dusk = lum(radarPalette(ThemeMode.DUSK).textPrimary)
-        val night = lum(radarPalette(ThemeMode.NIGHT).textPrimary)
-        assertTrue(day > dusk && dusk > night, "day($day) > dusk($dusk) > night($night)")
+    fun `night chrome surface is darkest for dark adaptation`() {
+        val day = lum(radarPalette(ThemeMode.DAY).surface)
+        val dusk = lum(radarPalette(ThemeMode.DUSK).surface)
+        val night = lum(radarPalette(ThemeMode.NIGHT).surface)
+        assertTrue(night <= dusk, "night($night) ≤ dusk($dusk)")
+        assertTrue(dusk < day, "dusk($dusk) < day($day) — day is the light OpenBridge chrome")
+        assertTrue(night < 16.0, "night chrome surface must be near-black (lum=$night)")
     }
 
     // --- §5.4.1.1 dark background + §4.5.1 lighter foreground (≥1:2, NOTE 5) ---
@@ -83,10 +87,13 @@ class RadarPaletteTest {
     // --- §4.7.2.1 red = alarm; §4.7.1.1 accent non-red & distinct ---
 
     @Test
-    fun `alarm is pure red and accent is non-red in every mode`() {
+    fun `alarm is dominant red and accent is non-red in every mode`() {
         for (m in ThemeMode.entries) {
             val p = radarPalette(m)
-            assertTrue(red(p.alarm) > 0 && green(p.alarm) == 0 && blue(p.alarm) == 0, "$m alarm pure red")
+            assertTrue(
+                red(p.alarm) >= 200 && red(p.alarm) > 3 * green(p.alarm) && red(p.alarm) > 3 * blue(p.alarm),
+                "$m alarm must be dominant red",
+            )
             assertTrue(green(p.accent) > 0 || blue(p.accent) > 0, "$m accent must be non-red")
             assertNotEquals(p.alarm, p.accent, "$m accent must differ from alarm")
         }
@@ -134,8 +141,11 @@ class RadarPaletteTest {
         // alpha untouched (a back-light scales emitted light, not opacity)
         assertEquals(alpha(p.textPrimary), alpha(dim.textPrimary), "alpha preserved")
         assertEquals(alpha(p.alarm), alpha(dim.alarm), "alarm alpha preserved")
-        // hue (channel ratios → coding) preserved: alarm stays pure red after dimming
-        assertTrue(red(dim.alarm) > 0 && green(dim.alarm) == 0 && blue(dim.alarm) == 0, "alarm stays pure red")
+        // hue (channel ratios → coding) preserved: alarm stays dominant red after dimming
+        assertTrue(
+            red(dim.alarm) > 0 && red(dim.alarm) > 3 * green(dim.alarm) && red(dim.alarm) > 3 * blue(dim.alarm),
+            "alarm stays dominant red",
+        )
     }
 
     @Test

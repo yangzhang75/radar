@@ -182,7 +182,7 @@ fun RadarScreen() {
     // 过去航迹时长(H 键调):驱动现有 TargetOverlay 航迹(showTrails/maxTrailPoints),不另起冗余系统。
     var trackLength by remember { mutableStateOf(TrackLength.MIN_3) }
     // 昼/阴天/黄昏/夜 + 亮度(W6-B):hoist 一次,驱动全局 OpenBridgeTheme;面板由 K 键浮层调节。
-    val themeState = rememberThemeState()
+    val themeState = rememberThemeState(com.shipradar.app.theme.ThemeMode.DAY)
     // 亮度 → 硬件 I/O 口 PWM 背光(无硬件则记日志;真机配 SysfsBacklightPwm.pwmPath)。
     LaunchedEffect(themeState.brilliance) {
         com.shipradar.app.theme.SysfsBacklightPwm.setBrilliance(themeState.brilliance)

@@ -19,6 +19,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.shipradar.app.control.RadarDisplaySettings
+import com.shipradar.app.framework.OpenBridge
 import com.shipradar.contract.OwnShipData
 import com.shipradar.contract.TargetSource
 import com.shipradar.contract.TrackedTarget
@@ -51,7 +52,7 @@ fun RightInfoPanel(
         modifier
             .width(228.dp)
             .fillMaxHeight()
-            .background(Color(0xFF0B1418))
+            .background(OpenBridge.colors.chromeBackground)
             .verticalScroll(rememberScrollState())
             .padding(8.dp),
     ) {
@@ -96,7 +97,7 @@ fun RightInfoPanel(
         }
         Section(if (shown != null) "TARGET ${shown.id}${danger.isNotEmpty().ifTrue(" ⚠")}" else "TARGET") {
             if (shown == null) {
-                Text("No target selected", color = MUTED, fontSize = 11.sp)
+                Text("No target selected", color = OpenBridge.colors.foregroundSecondary, fontSize = 11.sp)
             } else {
                 Field("BRG", deg(shown.bearingDeg) + if (shown.trueBearing) " T" else " R")
                 Field("RNG", "%.2f NM".format(shown.rangeNm))
@@ -124,15 +125,11 @@ fun RightInfoPanel(
     }
 }
 
-private val MUTED = Color(0xFF7FA6B3)
-private val FG = Color(0xFFE6F2F5)
-private val DANGER_FG = Color(0xFFFF5252)
-
 @Composable
 private fun Section(title: String, content: @Composable () -> Unit) {
     Text(
         title,
-        color = Color(0xFF9FC2CE),
+        color = OpenBridge.colors.accent,
         fontSize = 10.sp,
         fontWeight = FontWeight.Bold,
         modifier = Modifier.padding(top = 10.dp, bottom = 2.dp),
@@ -143,10 +140,10 @@ private fun Section(title: String, content: @Composable () -> Unit) {
 @Composable
 private fun Field(label: String, value: String?, danger: Boolean = false) {
     Row(Modifier.fillMaxWidth().padding(vertical = 1.dp)) {
-        Text(label, color = MUTED, fontSize = 11.sp, modifier = Modifier.width(74.dp))
+        Text(label, color = OpenBridge.colors.foregroundSecondary, fontSize = 11.sp, modifier = Modifier.width(74.dp))
         Text(
             value ?: "---",
-            color = if (danger) DANGER_FG else FG,
+            color = if (danger) OpenBridge.colors.alarm else OpenBridge.colors.foregroundPrimary,
             fontSize = 13.sp,
             fontWeight = FontWeight.Bold,
             fontFamily = FontFamily.Monospace,
