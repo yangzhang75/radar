@@ -10,23 +10,26 @@ import org.json.JSONArray
  */
 object ChartData {
 
-    @Volatile private var cached: List<List<DoubleArray>>? = null
+    @Volatile private var cachedCoast: List<List<DoubleArray>>? = null
+    @Volatile private var cachedLand: List<List<DoubleArray>>? = null
 
-    /** 从 assets 加载海岸线折线(首次解析后缓存)。失败返回空(网格仍显示)。 */
-    fun coastlines(assets: AssetManager): List<List<DoubleArray>> {
-        cached?.let { return it }
-        val parsed = runCatching {
-            val text = assets.open("coastline.json").bufferedReader(Charsets.UTF_8).use { it.readText() }
-            val arr = JSONArray(text)
-            (0 until arr.length()).map { i ->
-                val line = arr.getJSONArray(i)
-                (0 until line.length()).map { j ->
-                    val p = line.getJSONArray(j)
-                    doubleArrayOf(p.getDouble(0), p.getDouble(1)) // [lat, lon]
-                }
+    private fun load(assets: AssetManager, name: String): List<List<DoubleArray>> = runCatching {
+        val text = assets.open(name).bufferedReader(Charsets.UTF_8).use { it.readText() }
+        val arr = JSONArray(text)
+        (0 until arr.length()).map { i ->
+            val line = arr.getJSONArray(i)
+            (0 until line.length()).map { j ->
+                val p = line.getJSONArray(j)
+                doubleArrayOf(p.getDouble(0), p.getDouble(1)) // [lat, lon]
             }
-        }.getOrDefault(emptyList())
-        cached = parsed
-        return parsed
-    }
+        }
+    }.getOrDefault(emptyList())
+
+    /** 海岸线折线(细线)。 */
+    fun coastlines(assets: AssetManager): List<List<DoubleArray>> =
+        cachedCoast ?: load(assets, "coastline.json").also { cachedCoast = it }
+
+    /** 陆地/岛屿多边形(填充)。 */
+    fun land(assets: AssetManager): List<List<DoubleArray>> =
+        cachedLand ?: load(assets, "land.json").also { cachedLand = it }
 }

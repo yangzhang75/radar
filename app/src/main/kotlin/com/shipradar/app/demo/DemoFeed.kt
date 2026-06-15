@@ -52,7 +52,7 @@ object DemoFeed {
                 router.on450(Iec450Group.SATD, frame450("HEHDT,${"%05.1f".format(headingDeg)},T"), now = now)
                 router.on450(
                     Iec450Group.NAVD,
-                    frame450("GPRMC,123519,A,3113.80,N,12209.00,E,${"%04.1f".format(sogKn)},${"%05.1f".format(headingDeg)},090625,,"),
+                    frame450("GPRMC,123519,A,3018.00,N,12200.00,E,${"%04.1f".format(sogKn)},${"%05.1f".format(headingDeg)},090625,,"),
                     now = now,
                 )
             }

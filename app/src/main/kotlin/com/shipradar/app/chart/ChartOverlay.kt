@@ -5,11 +5,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.platform.LocalContext
 import com.shipradar.uicore.ppi.PpiOrientation
 import com.shipradar.uicore.ppi.PpiProjection
 import com.shipradar.uicore.ppi.ScreenPoint
@@ -19,11 +22,8 @@ import kotlin.math.hypot
 import kotlin.math.roundToInt
 
 /**
- * 海图叠加(底图):经纬网格 + 海岸线,按本船位置/量程/方位投影到 PPI。
- *
- * 投影:每个经纬点 → 相对本船的真距离(NM)+真方位 → [PpiProjection.polarToScreen](艏向相对方位,
- * 由投影按定向旋转)。平面近似(雷达量程内足够)。**演示海图数据见 [ChartData];真 S-57 待采购。**
- * 随偏心:由调用方把 center 传入(= 视图中心 + 偏心偏移)。
+ * 海图/底图叠加:**填充陆地(真实 Natural Earth 多边形)+ 海岸线 + 经纬网格**,按本船位置/量程/方位
+ * 投影到 PPI,裁剪到操作圆内。陆地填充使其像真海图(非细线)。**真实地理数据,非认证 S-57 ENC。**
  */
 @Composable
 fun ChartOverlay(
@@ -39,76 +39,85 @@ fun ChartOverlay(
 ) {
     if (ownLat == null || ownLon == null || radiusPx <= 0f || rangeScaleNm <= 0.0) return
     val ctx = LocalContext.current
-    val coastlines = remember { ChartData.coastlines(ctx.assets) } // 真实海岸线(Natural Earth)
+    val land = remember { ChartData.land(ctx.assets) }
+    val coast = remember { ChartData.coastlines(ctx.assets) }
     val proj = PpiProjection.create(
         ScreenPoint(center.x.toDouble(), center.y.toDouble()), radiusPx.toDouble(), orientation, headingDeg, courseDeg,
     )
     val cosLat = cos(Math.toRadians(ownLat))
 
-    fun screenOf(lat: Double, lon: Double): Offset? {
+    // 投影一个经纬点到屏幕(陆地填充用:不按量程裁剪,靠圆裁剪;rangeFraction 可 >1)。
+    fun raw(lat: Double, lon: Double): Offset {
         val dLat = lat - ownLat
         val dLon = (lon - ownLon) * cosLat
         val distNm = 60.0 * hypot(dLat, dLon)
-        if (distNm > rangeScaleNm * 1.02) return null // 超量程裁剪
         val trueBrg = Math.toDegrees(atan2(dLon, dLat))
-        val bowRel = trueBrg - (headingDeg ?: 0.0)
-        val sp = proj.polarToScreen(((bowRel % 360) + 360) % 360, distNm / rangeScaleNm)
+        val bowRel = (((trueBrg - (headingDeg ?: 0.0)) % 360) + 360) % 360
+        val sp = proj.polarToScreen(bowRel, if (rangeScaleNm > 0) distNm / rangeScaleNm else 0.0)
         return Offset(sp.x.toFloat(), sp.y.toFloat())
+    }
+    // 线条用:超量程返回 Unspecified 以断开。
+    fun culled(lat: Double, lon: Double): Offset {
+        val dLat = lat - ownLat; val dLon = (lon - ownLon) * cosLat
+        if (60.0 * hypot(dLat, dLon) > rangeScaleNm * 1.02) return Offset.Unspecified
+        return raw(lat, lon)
     }
 
     Canvas(modifier.fillMaxSize()) {
-        drawGraticule(ownLat, ownLon, rangeScaleNm, ::screenOf)
-        for (line in coastlines) drawPolyline(line, ::screenOf)
+        val circle = Path().apply { addOval(Rect(center.x - radiusPx, center.y - radiusPx, center.x + radiusPx, center.y + radiusPx)) }
+        // 陆地填充 + 海岸线描边,裁剪在操作圆内。
+        clipPath(circle) {
+            for (poly in land) {
+                if (poly.size < 3) continue
+                val path = Path()
+                val p0 = raw(poly[0][0], poly[0][1]); path.moveTo(p0.x, p0.y)
+                for (k in 1 until poly.size) { val p = raw(poly[k][0], poly[k][1]); path.lineTo(p.x, p.y) }
+                path.close()
+                drawPath(path, LAND_FILL)
+                drawPath(path, COAST, style = Stroke(width = 1.6f))
+            }
+        }
+        // 经纬网格
+        drawGraticule(ownLat, ownLon, rangeScaleNm, ::culled)
+        // 海岸线细节(land.json 之外的细线)
+        for (line in coast) drawPolyline(line, ::culled)
     }
 }
 
-/** 网格步长(度):按量程自适应,经纬线不过密。 */
+private val LAND_FILL = Color(0xFF3A4A2E) // 暗橄榄陆地(雷达暗背景上不刺眼)
+private val COAST = Color(0xFFC8B07A)     // 海岸线(陆地棕黄)
+private val GRID = Color(0x55A9C7D6)      // 经纬网格
+
 private fun gridStepDeg(rangeNm: Double): Double = when {
-    rangeNm <= 1.5 -> 0.02
-    rangeNm <= 6.0 -> 0.05
-    rangeNm <= 24.0 -> 0.2
-    else -> 0.5
+    rangeNm <= 1.5 -> 0.02; rangeNm <= 6.0 -> 0.05; rangeNm <= 24.0 -> 0.2; else -> 0.5
 }
 
-private fun DrawScope.drawGraticule(
-    ownLat: Double, ownLon: Double, rangeNm: Double, screenOf: (Double, Double) -> Offset?,
-) {
-    val spanDeg = rangeNm / 60.0 * 1.1
+private fun DrawScope.drawGraticule(ownLat: Double, ownLon: Double, rangeNm: Double, p: (Double, Double) -> Offset) {
+    val span = rangeNm / 60.0 * 1.1
     val step = gridStepDeg(rangeNm)
-    val color = Color(0x66A9C7D6) // 蓝灰网格(略亮可见)
     fun snap(v: Double) = (v / step).roundToInt() * step
-    // 纬线(沿经度方向采样)
-    var lat = snap(ownLat - spanDeg)
-    while (lat <= ownLat + spanDeg) {
-        val pts = ArrayList<Offset>()
-        var lon = ownLon - spanDeg
-        while (lon <= ownLon + spanDeg) { pts.add(screenOf(lat, lon) ?: Offset.Unspecified); lon += step / 4 }
-        strokePath(pts, color, 1f)
-        lat += step
+    var lat = snap(ownLat - span)
+    while (lat <= ownLat + span) {
+        val pts = ArrayList<Offset>(); var lon = ownLon - span
+        while (lon <= ownLon + span) { pts.add(p(lat, lon)); lon += step / 4 }
+        strokePath(pts, GRID, 1f); lat += step
     }
-    // 经线(沿纬度方向采样)
-    var lon = snap(ownLon - spanDeg)
-    while (lon <= ownLon + spanDeg) {
-        val pts = ArrayList<Offset>()
-        var la = ownLat - spanDeg
-        while (la <= ownLat + spanDeg) { pts.add(screenOf(la, lon) ?: Offset.Unspecified); la += step / 4 }
-        strokePath(pts, color, 1f)
-        lon += step
+    var lon = snap(ownLon - span)
+    while (lon <= ownLon + span) {
+        val pts = ArrayList<Offset>(); var la = ownLat - span
+        while (la <= ownLat + span) { pts.add(p(la, lon)); la += step / 4 }
+        strokePath(pts, GRID, 1f); lon += step
     }
 }
 
-private fun DrawScope.drawPolyline(line: List<DoubleArray>, screenOf: (Double, Double) -> Offset?) {
-    val pts = line.map { screenOf(it[0], it[1]) ?: Offset.Unspecified }
-    strokePath(pts, Color(0xCCB8946A), 2.2f) // 海岸线(陆地棕黄)
-}
+private fun DrawScope.drawPolyline(line: List<DoubleArray>, p: (Double, Double) -> Offset) =
+    strokePath(line.map { p(it[0], it[1]) }, COAST, 1.6f)
 
-/** 画一串点为折线;遇到 Unspecified(超量程)断开,不连跨屏假线。 */
 private fun DrawScope.strokePath(pts: List<Offset>, color: Color, width: Float) {
     var prev: Offset? = null
-    for (p in pts) {
-        if (p == Offset.Unspecified) { prev = null; continue }
-        val pr = prev
-        if (pr != null) drawLine(color, pr, p, strokeWidth = width)
-        prev = p
+    for (pt in pts) {
+        if (pt == Offset.Unspecified) { prev = null; continue }
+        prev?.let { drawLine(color, it, pt, strokeWidth = width) }
+        prev = pt
     }
 }
