@@ -92,56 +92,51 @@ data class ObColorTokens(
  * values and asserted in tests (if/when this layer is promoted to a JVM module).
  */
 fun obTokens(theme: ObTheme): ObColorTokens = when (theme) {
-    // DAY — ambient 200 cd/m² (Table 1): brightest foreground; radar area still dark (§5.4.1.1 NOTE).
+    // DAY — OpenBridge 5.0 "day" 调色板(浅色 chrome:backdrop 224/surface 247/section 240/divider 221,
+    // 文字深灰 83;交互蓝 #4271B3)。雷达操作区仍为暗底(IEC 62288 §5.4.1.1)。
     ObTheme.DAY -> ObColorTokens(
-        operationalBackground = 0xFF000A14.toInt(), // dark navy-black  §5.4.1.1; TODO(待标准/视觉参考: OB6 day operational bg)
-        chromeBackground = 0xFF1B2733.toInt(),      // OB container, day
-        chromeElevated = 0xFF26343F.toInt(),
-        chromeBorder = 0xFF3C4A57.toInt(),
-        foregroundPrimary = 0xFFE8EEF2.toInt(),     // near-white, lighter-on-dark §4.5.1
-        foregroundSecondary = 0xFFA9B6C0.toInt(),
-        foregroundDisabled = 0xFF5E6B75.toInt(),
-        accent = 0xFF3FA9E0.toInt(),                // OpenBridge active blue; non-red §4.7.1.1
-        accentForeground = 0xFF00121E.toInt(),
-        alarm = 0xFFFF0000.toInt(),                 // red §4.7.2.1
-        warning = 0xFFFF8000.toInt(),               // orange
-        caution = 0xFFFFD400.toInt(),               // yellow
+        operationalBackground = 0xFF000000.toInt(), // 雷达圆暗底(IEC §5.4.1.1)
+        chromeBackground = 0xFFF7F7F7.toInt(),      // OB day container surface
+        chromeElevated = 0xFFF0F0F0.toInt(),        // OB day section
+        chromeBorder = 0xFFDDDDDD.toInt(),          // OB day divider
+        foregroundPrimary = 0xFF535353.toInt(),     // OB day on-flat text(浅底深字)
+        foregroundSecondary = 0xFF7A7A7A.toInt(),
+        foregroundDisabled = 0xFFB0B0B0.toInt(),
+        accent = 0xFF4271B3.toInt(),                // OpenBridge 交互蓝(focus/amplified)
+        accentForeground = 0xFFFFFFFF.toInt(),
+        alarm = 0xFFE2231A.toInt(),                 // 红 §4.7.2.1
+        warning = 0xFFEB7700.toInt(),               // 橙
+        caution = 0xFFE5C100.toInt(),               // 黄
         echoLegendPeak = ColorMapper.amplitudeColor(ColorMapper.SAMPLE_APPROACHING, ColorMapper.Palette.DAY),
     )
-    // DUSK — ambient 10 cd/m² (Table 1): reduced luminance.
+    // DUSK — OpenBridge "dusk"(深中性:backdrop 15/surface 31/section 38/divider 67,文字浅灰 176)。
     ObTheme.DUSK -> ObColorTokens(
-        operationalBackground = 0xFF00060D.toInt(),
-        chromeBackground = 0xFF101820.toInt(),
-        chromeElevated = 0xFF182430.toInt(),
-        chromeBorder = 0xFF263441.toInt(),
-        foregroundPrimary = 0xFFB9C2C9.toInt(),     // dimmer than day
-        foregroundSecondary = 0xFF7C8893.toInt(),
-        foregroundDisabled = 0xFF44505A.toInt(),
-        accent = 0xFF2E7BA6.toInt(),
-        accentForeground = 0xFF00121E.toInt(),
-        alarm = 0xFFFF0000.toInt(),                 // red §4.7.2.1 — kept fully saturated in every theme
+        operationalBackground = 0xFF000000.toInt(),
+        chromeBackground = 0xFF1F1F1F.toInt(),
+        chromeElevated = 0xFF262626.toInt(),
+        chromeBorder = 0xFF434343.toInt(),
+        foregroundPrimary = 0xFFB0B0B0.toInt(),
+        foregroundSecondary = 0xFF808080.toInt(),
+        foregroundDisabled = 0xFF555555.toInt(),
+        accent = 0xFF4271B3.toInt(),                // OB 蓝
+        accentForeground = 0xFFFFFFFF.toInt(),
+        alarm = 0xFFE2231A.toInt(),
         warning = 0xFFCC6600.toInt(),
         caution = 0xFFCCAA00.toInt(),
         echoLegendPeak = ColorMapper.amplitudeColor(ColorMapper.SAMPLE_APPROACHING, ColorMapper.Palette.DUSK),
     )
-    // NIGHT — darkness (Table 1) + preserve dark adaptation (§7.2.1): low-luminance red/black scheme.
+    // NIGHT — OpenBridge "night"(黑底 0,0,0 + 琥珀:active 234,167,94 / text 199,136,66;暗视觉保护 §7.2.1)。
     ObTheme.NIGHT -> ObColorTokens(
-        operationalBackground = 0xFF030000.toInt(), // red-black; matches ColorMapper night hue
-        chromeBackground = 0xFF0A0303.toInt(),
-        chromeElevated = 0xFF160606.toInt(),
-        chromeBorder = 0xFF2A0E0E.toInt(),
-        foregroundPrimary = 0xFFB23A3A.toInt(),     // dim red text — scotopic-safe; TODO(待标准/视觉参考: OB6 night fg)
-        foregroundSecondary = 0xFF7A2424.toInt(),
-        foregroundDisabled = 0xFF3A1414.toInt(),
-        // A blue accent would harm dark adaptation at night; OpenBridge night dims the accent toward
-        // amber/red. Kept distinct (brighter, warmer) from foreground red. TODO(待标准/厂商 HMI).
-        accent = 0xFFD06A1E.toInt(),
+        operationalBackground = 0xFF000000.toInt(),
+        chromeBackground = 0xFF000000.toInt(),      // OB night bg = 纯黑
+        chromeElevated = 0xFF0E0E0E.toInt(),
+        chromeBorder = 0xFF271B10.toInt(),          // OB night divider(暖)
+        foregroundPrimary = 0xFFC78842.toInt(),     // OB night on-flat 琥珀
+        foregroundSecondary = 0xFF8A6030.toInt(),
+        foregroundDisabled = 0xFF4A3418.toInt(),
+        accent = 0xFFEAA75E.toInt(),                // OB night active 琥珀(蓝色夜间损害暗视觉)
         accentForeground = 0xFF000000.toInt(),
-        // Alarm red is the same fully-saturated 0xFFFF0000 in every theme: an alarm must be maximally
-        // conspicuous and is the baseline ColorMapper guarantees the echo red sits ≥1:2 below (§5.4.1.1).
-        // It stays distinguishable from the desaturated red night foreground by saturation + flashing +
-        // dedicated position, not colour alone (§4.7.3.1, §4.7.4.1).
-        alarm = 0xFFFF0000.toInt(),
+        alarm = 0xFFFF0000.toInt(),                 // 报警红始终满饱和 §4.7.2.1
         warning = 0xFF8A4A00.toInt(),
         caution = 0xFF8A7A00.toInt(),
         echoLegendPeak = ColorMapper.amplitudeColor(ColorMapper.SAMPLE_APPROACHING, ColorMapper.Palette.NIGHT),
