@@ -3,7 +3,9 @@ package com.shipradar.app.chart
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -36,6 +38,8 @@ fun ChartOverlay(
     modifier: Modifier = Modifier,
 ) {
     if (ownLat == null || ownLon == null || radiusPx <= 0f || rangeScaleNm <= 0.0) return
+    val ctx = LocalContext.current
+    val coastlines = remember { ChartData.coastlines(ctx.assets) } // 真实海岸线(Natural Earth)
     val proj = PpiProjection.create(
         ScreenPoint(center.x.toDouble(), center.y.toDouble()), radiusPx.toDouble(), orientation, headingDeg, courseDeg,
     )
@@ -54,7 +58,7 @@ fun ChartOverlay(
 
     Canvas(modifier.fillMaxSize()) {
         drawGraticule(ownLat, ownLon, rangeScaleNm, ::screenOf)
-        for (line in ChartData.coastlines) drawPolyline(line, ::screenOf)
+        for (line in coastlines) drawPolyline(line, ::screenOf)
     }
 }
 
