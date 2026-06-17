@@ -18,6 +18,9 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.layout.Arrangement
+import com.shipradar.app.conning.CompassGauge
+import com.shipradar.app.conning.InstrumentField
 import com.shipradar.app.control.RadarDisplaySettings
 import com.shipradar.app.framework.OpenBridge
 import com.shipradar.contract.OwnShipData
@@ -50,7 +53,7 @@ fun RightInfoPanel(
 
     Column(
         modifier
-            .width(228.dp)
+            .width(248.dp)
             .fillMaxHeight()
             .background(OpenBridge.colors.chromeBackground)
             .verticalScroll(rememberScrollState())
@@ -89,10 +92,23 @@ fun RightInfoPanel(
             )
             Text("  键 D", color = Color(0xFF7FA6B3), fontSize = 10.sp, modifier = Modifier.padding(start = 6.dp))
         }
+        // OpenBridge conning 罗经盘(HDG/COG 箭头 + 转速点),对齐 JRC RADAR 实机右侧仪表。
+        Section("COMPASS") {
+            CompassGauge(
+                headingDeg = ownShip.headingDeg,
+                cogDeg = ownShip.cogDeg,
+                rotDegMin = ownShip.rotDegMin,
+                modifier = Modifier.padding(vertical = 4.dp),
+            )
+            // 读数瓦片(OpenBridge instrument-field):COG / SOG / ROT。
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                InstrumentField("COG", ownShip.cogDeg, "°T", fractionDigits = 1, maxDigits = 3)
+                InstrumentField("SOG", ownShip.sogKn, "kn", fractionDigits = 1, maxDigits = 2)
+                InstrumentField("ROT", ownShip.rotDegMin, "°/m", fractionDigits = 0, maxDigits = 3)
+            }
+        }
         Section("OWN SHIP") {
             Field("HDG", ownShip.headingDeg?.let { deg(it) + if (ownShip.headingTrue) " T" else " M" })
-            Field("COG", ownShip.cogDeg?.let { deg(it) + " T" })
-            Field("SOG", ownShip.sogKn?.let { "%.1f kn".format(it) })
             Field("POSN", latLon(ownShip.latitude, ownShip.longitude))
         }
         Section(if (shown != null) "TARGET ${shown.id}${danger.isNotEmpty().ifTrue(" ⚠")}" else "TARGET") {

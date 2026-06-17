@@ -33,6 +33,13 @@ data class ObColors(
     val warning: Color,
     val caution: Color,
     val echoLegendPeak: Color,
+    // OpenBridge conning-instrument tokens (compass / instrument-field).
+    val instrumentEnhancedPrimary: Color,
+    val instrumentEnhancedSecondary: Color,
+    val instrumentRegularSecondary: Color,
+    val instrumentFramePrimary: Color,
+    val instrumentFrameSecondary: Color,
+    val instrumentFrameTertiary: Color,
 )
 
 /** Build the Compose colour set for [theme] from the pure tokens. */
@@ -51,6 +58,12 @@ fun obColors(theme: ObTheme): ObColors = with(obTokens(theme)) {
         warning = Color(warning),
         caution = Color(caution),
         echoLegendPeak = Color(echoLegendPeak),
+        instrumentEnhancedPrimary = Color(instrumentEnhancedPrimary),
+        instrumentEnhancedSecondary = Color(instrumentEnhancedSecondary),
+        instrumentRegularSecondary = Color(instrumentRegularSecondary),
+        instrumentFramePrimary = Color(instrumentFramePrimary),
+        instrumentFrameSecondary = Color(instrumentFrameSecondary),
+        instrumentFrameTertiary = Color(instrumentFrameTertiary),
     )
 }
 

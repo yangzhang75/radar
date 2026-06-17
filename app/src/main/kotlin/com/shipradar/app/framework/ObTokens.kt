@@ -82,6 +82,21 @@ data class ObColorTokens(
     val caution: Int,
     /** Echo "strongest return" swatch, taken straight from [ColorMapper] so a legend matches the PPI. */
     val echoLegendPeak: Int,
+    // --- OpenBridge navigation-instrument tokens (conning: compass / instrument-field), taken from the
+    //     published `@oicl/openbridge-webcomponents` palette `variables.css`. Used by the right-hand
+    //     conning cluster (CompassGauge / InstrumentField), per the JRC/OpenBridge RADAR reference. ---
+    /** Instrument "enhanced" primary — bright value numerals (OB instrument blue by day/dusk, teal at night). */
+    val instrumentEnhancedPrimary: Int,
+    /** Instrument "enhanced" secondary — active gauge ring & HDG/COG arrows. */
+    val instrumentEnhancedSecondary: Int,
+    /** Instrument "regular" secondary — passive tickmarks / unit labels. */
+    val instrumentRegularSecondary: Int,
+    /** Instrument frame primary — dial face fill. */
+    val instrumentFramePrimary: Int,
+    /** Instrument frame secondary — inner ring fill. */
+    val instrumentFrameSecondary: Int,
+    /** Instrument frame tertiary — ring strokes / dividers. */
+    val instrumentFrameTertiary: Int,
 )
 
 /**
@@ -108,6 +123,12 @@ fun obTokens(theme: ObTheme): ObColorTokens = when (theme) {
         warning = 0xFFEB7700.toInt(),               // 橙
         caution = 0xFFE5C100.toInt(),               // 黄
         echoLegendPeak = ColorMapper.amplitudeColor(ColorMapper.SAMPLE_APPROACHING, ColorMapper.Palette.DAY),
+        instrumentEnhancedPrimary = 0xFF1D3C67.toInt(),   // OB day rgb(29,60,103) 深蓝读数
+        instrumentEnhancedSecondary = 0xFF2D548B.toInt(),  // OB day rgb(45,84,139)
+        instrumentRegularSecondary = 0xFF535353.toInt(),   // OB day rgb(83,83,83)
+        instrumentFramePrimary = 0xFFFFFFFF.toInt(),       // OB day rgb(255,255,255)
+        instrumentFrameSecondary = 0xFFF0F0F0.toInt(),     // OB day rgb(240,240,240)
+        instrumentFrameTertiary = 0xFFBEBEBE.toInt(),      // OB day rgb(190,190,190)
     )
     // DUSK — OpenBridge "dusk"(深中性:backdrop 15/surface 31/section 38/divider 67,文字浅灰 176)。
     ObTheme.DUSK -> ObColorTokens(
@@ -124,6 +145,12 @@ fun obTokens(theme: ObTheme): ObColorTokens = when (theme) {
         warning = 0xFFCC6600.toInt(),
         caution = 0xFFCCAA00.toInt(),
         echoLegendPeak = ColorMapper.amplitudeColor(ColorMapper.SAMPLE_APPROACHING, ColorMapper.Palette.DUSK),
+        instrumentEnhancedPrimary = 0xFFB1D6FF.toInt(),   // OB dusk rgb(177,214,255) 亮蓝读数
+        instrumentEnhancedSecondary = 0xFF84B3EF.toInt(),  // OB dusk rgb(132,179,239)
+        instrumentRegularSecondary = 0xFFB0B0B0.toInt(),   // OB dusk rgb(176,176,176)
+        instrumentFramePrimary = 0xFF363636.toInt(),       // OB dusk rgb(54,54,54)
+        instrumentFrameSecondary = 0xFF262626.toInt(),     // OB dusk rgb(38,38,38)
+        instrumentFrameTertiary = 0xFF5E5E5E.toInt(),      // OB dusk rgb(94,94,94)
     )
     // NIGHT — OpenBridge "night"(黑底 0,0,0 + 琥珀:active 234,167,94 / text 199,136,66;暗视觉保护 §7.2.1)。
     ObTheme.NIGHT -> ObColorTokens(
@@ -140,5 +167,11 @@ fun obTokens(theme: ObTheme): ObColorTokens = when (theme) {
         warning = 0xFF8A4A00.toInt(),
         caution = 0xFF8A7A00.toInt(),
         echoLegendPeak = ColorMapper.amplitudeColor(ColorMapper.SAMPLE_APPROACHING, ColorMapper.Palette.NIGHT),
+        instrumentEnhancedPrimary = 0xFF58C8A2.toInt(),   // OB night rgb(88,200,162) 青绿(蓝色夜间损暗视觉)
+        instrumentEnhancedSecondary = 0xFF38A784.toInt(),  // OB night rgb(56,167,132)
+        instrumentRegularSecondary = 0xFFC78842.toInt(),   // OB night rgb(199,136,66) 琥珀
+        instrumentFramePrimary = 0xFF000000.toInt(),       // OB night rgb(0,0,0)
+        instrumentFrameSecondary = 0xFF000000.toInt(),     // OB night rgb(0,0,0)
+        instrumentFrameTertiary = 0xFF78532C.toInt(),      // OB night rgb(120,83,44) 暖棕
     )
 }
