@@ -1,7 +1,8 @@
 package com.shipradar.uicore.target
 
 import com.shipradar.contract.EchoSpoke
-import kotlin.math.roundToInt
+import com.shipradar.contract.SampleEncoding
+import com.shipradar.uicore.color.ColorMapper
 
 /**
  * Step 1 of the radar tracking pipeline — **plot extraction** (radar video → plots).
@@ -56,8 +57,11 @@ object PlotExtractor {
 
     private const val METERS_PER_NM = 1852.0
 
-    /** One above-threshold cell, kept until clustered. */
-    private data class Hit(val spokeIdx: Int, val cell: Int, val amp: Int, val rangeM: Double, val bearingTrue: Double)
+    /** One above-threshold cell, kept until clustered. [approaching] = Doppler tag (null on amplitude scan). */
+    private data class Hit(
+        val spokeIdx: Int, val cell: Int, val amp: Int, val rangeM: Double, val bearingTrue: Double,
+        val approaching: Boolean?,
+    )
 
     /**
      * Extract plots from one scan (a list of spokes, ideally one full antenna revolution in azimuth order).
@@ -70,20 +74,23 @@ object PlotExtractor {
         val hits = ArrayList<Hit>()
         val spokeHitRanges = ArrayList<IntArray>(scan.size) // cell indices that hit, per spoke (for adjacency)
         for ((si, spoke) in scan.withIndex()) {
-            val cells = detect(spoke.samples, config)
+            val cells = detect(spoke.samples, config, spoke.encoding)
             spokeHitRanges.add(cells)
             if (cells.isEmpty()) continue
             val n = spoke.samples.size
             val mPerCell = if (n > 0) spoke.rangeMetersFull / n else 0.0
             val bearingTrue = spoke.azimuthDeg + (spoke.headingDeg ?: 0.0)
+            val doppler = spoke.encoding == SampleEncoding.DOPPLER
             for (c in cells) {
+                val v = spoke.samples[c].toInt() and 0xFF
                 hits.add(
                     Hit(
                         spokeIdx = si,
                         cell = c,
-                        amp = spoke.samples[c].toInt() and 0xFF,
+                        amp = v,
                         rangeM = (c + 0.5) * mPerCell,
                         bearingTrue = bearingTrue,
+                        approaching = if (doppler) (v == ColorMapper.SAMPLE_APPROACHING) else null,
                     ),
                 )
             }
@@ -143,6 +150,10 @@ object PlotExtractor {
             if (wSum <= 0.0) continue
             val rangeM = rSum / wSum
             val bearing = Geometry.normalizeDeg(Math.toDegrees(kotlin.math.atan2(bSinSum, bCosSum)))
+            // Doppler tag: if any cell carries Doppler info, the cluster is approaching when approaching
+            // cells outnumber receding ones (collision-relevant); null when this was an amplitude scan.
+            val dopplerCells = cells.mapNotNull { it.approaching }
+            val approaching = if (dopplerCells.isEmpty()) null else dopplerCells.count { it } >= (dopplerCells.size + 1) / 2
             plots.add(
                 peak.toDouble() to RadarPlot(
                     id = "",
@@ -150,24 +161,42 @@ object PlotExtractor {
                     trueBearingDeg = bearing,
                     amplitudePeak = peak.toDouble(),
                     cellCount = cells.size,
+                    approaching = approaching,
                 ),
             )
         }
 
-        // strongest first, then assign stable ids P1..Pn.
-        plots.sortWith(compareByDescending<Pair<Double, RadarPlot>> { it.first }.thenBy { it.second.rangeNm })
+        // Ordering: approaching targets first (collision-relevant), then strongest, then nearest.
+        plots.sortWith(
+            compareByDescending<Pair<Double, RadarPlot>> { it.second.approaching == true }
+                .thenByDescending { it.first }
+                .thenBy { it.second.rangeNm },
+        )
         return plots.mapIndexed { idx, (_, p) -> p.copy(id = "P${idx + 1}") }
     }
 
     /**
-     * 1-D cell-averaging CFAR along one spoke's range samples. Returns the indices of detected cells.
-     * For each cell-under-test the noise estimate is the mean of the training cells on both sides
-     * (skipping the guard band); the cell is a hit when it clears both `cfarFactor × noiseMean` and the
-     * absolute floor. Cells near the ends use whatever training cells are available.
+     * Detection along one spoke's range samples → indices of detected cells.
+     *  - **AMPLITUDE** scan: 1-D cell-averaging CFAR — a cell hits when it clears both `cfarFactor ×`
+     *    the local training-cell mean (guard band excluded) and the absolute floor.
+     *  - **DOPPLER** scan: the sample value IS the Doppler category, not an amplitude, so CFAR doesn't
+     *    apply; a cell hits when it carries motion (approaching=15 or receding=14).
      */
-    internal fun detect(samples: ByteArray, config: PlotExtractionConfig): IntArray {
+    internal fun detect(
+        samples: ByteArray,
+        config: PlotExtractionConfig,
+        encoding: SampleEncoding = SampleEncoding.AMPLITUDE,
+    ): IntArray {
         val n = samples.size
         if (n == 0) return IntArray(0)
+        if (encoding == SampleEncoding.DOPPLER) {
+            val out = ArrayList<Int>()
+            for (i in 0 until n) {
+                val v = samples[i].toInt() and 0xFF
+                if (v == ColorMapper.SAMPLE_APPROACHING || v == ColorMapper.SAMPLE_RECEDING) out.add(i)
+            }
+            return out.toIntArray()
+        }
         val out = ArrayList<Int>()
         val guard = config.cfarGuardCells
         val train = config.cfarTrainingCells

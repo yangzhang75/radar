@@ -136,6 +136,35 @@ class PlotExtractorTest {
     }
 
     @Test
+    fun `doppler scan tags approaching targets and orders them first`() {
+        // DOPPLER spokes: sample value is the category (15 approaching, 14 receding), not amplitude.
+        fun dopplerSpoke(azDeg: Double, cell: Int, code: Int) = EchoSpoke(
+            azimuthDeg = azDeg, headingDeg = 0.0, trueNorth = true,
+            rangeCellSizeMm = 2000, rangeCellsDiv2 = N / 2,
+            samples = samples(base = 0, blobs = mapOf(cell to code, cell + 1 to code)),
+            encoding = SampleEncoding.DOPPLER, sequenceNumber = 0, bearingZeroError = false,
+        )
+        val scan = buildList {
+            // receding target at 40°, approaching target at 200°
+            for (az in 39..41) add(dopplerSpoke(az.toDouble(), 200, 14))
+            for (az in 199..201) add(dopplerSpoke(az.toDouble(), 250, 15))
+        }
+        val plots = PlotExtractor.extract(scan)
+        assertEquals(2, plots.size)
+        val approaching = plots.first { kotlin.math.abs(it.trueBearingDeg - 200.0) < 1.5 }
+        val receding = plots.first { kotlin.math.abs(it.trueBearingDeg - 40.0) < 1.5 }
+        assertTrue(approaching.approaching == true, "200° target must be tagged approaching")
+        assertTrue(receding.approaching == false, "40° target must be tagged receding")
+        assertEquals("P1", approaching.id, "approaching target ordered first (collision-relevant)")
+    }
+
+    @Test
+    fun `amplitude scan leaves doppler tag null`() {
+        val plots = PlotExtractor.extract(targetSpokes(azStart = 30.0))
+        assertTrue(plots.single().approaching == null, "amplitude scan carries no Doppler tag")
+    }
+
+    @Test
     fun `plots are ordered strongest-first with stable ids`() {
         val weak = mapOf(200 to 8, 201 to 9)
         val strong = mapOf(200 to 15, 201 to 15)

@@ -16,6 +16,8 @@ data class RadarPlot(
     val amplitudePeak: Double? = null,
     /** Number of above-threshold cells in the cluster — used to reject speckle and land/rain blobs. */
     val cellCount: Int? = null,
+    /** Doppler tag: true = approaching, false = receding, null = amplitude scan (no Doppler info). */
+    val approaching: Boolean? = null,
 )
 
 /**
