@@ -14,6 +14,45 @@ class GuardZoneModelTest {
     // 普通扇区 zone: 方位 30°→90°, 距离 3..4 NM
     private val sector = GuardZone(zone = 0, enabled = true, innerRangeNm = 3.0, outerRangeNm = 4.0, startBearingDeg = 30.0, endBearingDeg = 90.0)
 
+    // ---- 基准感知触发(真/相对 × 区真/相对),用本船航向换算 ----
+
+    @Test fun relative_zone_with_true_bearing_target_uses_heading() {
+        // 相对船首扇区 30..90;本船航向 100°。真方位 150° 的目标 → 相对 = 150-100 = 50°(命中)。
+        val relZone = sector.copy(trueBearing = false)
+        assertTrue(
+            GuardZoneModel.triggersForTarget(relZone, targetBearingDeg = 150.0, targetIsTrueBearing = true, targetRangeNm = 3.5, ownHeadingDeg = 100.0),
+            "true-bearing target must be converted into the relative zone's reference",
+        )
+        // 同一真方位 150° 但若错误地按真方位直接比(旧 bug)会落在 30..90 之外 → 漏报;基准感知后命中。
+        assertFalse(GuardZoneModel.contains(relZone, 150.0, 3.5), "naive same-frame check would miss it (the bug)")
+    }
+
+    @Test fun true_zone_with_relative_bearing_target_uses_heading() {
+        // 真方位扇区 30..90;本船航向 20°。相对船首 50° 的目标 → 真 = 50+20 = 70°(命中)。
+        val trueZone = sector.copy(trueBearing = true)
+        assertTrue(
+            GuardZoneModel.triggersForTarget(trueZone, targetBearingDeg = 50.0, targetIsTrueBearing = false, targetRangeNm = 3.5, ownHeadingDeg = 20.0),
+        )
+    }
+
+    @Test fun matching_frames_need_no_conversion() {
+        // 真区 + 真目标:60° 直接命中,与航向无关。
+        val trueZone = sector.copy(trueBearing = true)
+        assertTrue(GuardZoneModel.triggersForTarget(trueZone, 60.0, targetIsTrueBearing = true, targetRangeNm = 3.5, ownHeadingDeg = 217.0))
+    }
+
+    @Test fun null_heading_falls_back_to_zero() {
+        // 无罗经:相对区 + 真目标 60° → 按 0 航向处理,真==相对 → 命中(尽力而为,文档已注明)。
+        val relZone = sector.copy(trueBearing = false)
+        assertTrue(GuardZoneModel.triggersForTarget(relZone, 60.0, targetIsTrueBearing = true, targetRangeNm = 3.5, ownHeadingDeg = null))
+    }
+
+    @Test fun zonesHitForTarget_filters_enabled_hits() {
+        val relZone = sector.copy(trueBearing = false)
+        val hits = GuardZoneModel.zonesHitForTarget(listOf(relZone), 150.0, targetIsTrueBearing = true, targetRangeNm = 3.5, ownHeadingDeg = 100.0)
+        assertEquals(1, hits.size)
+    }
+
     // ---- 必备三例：区内 / 区外 / 跨 360° 边界 ----
 
     @Test fun target_inside_sector_ring_hits() {

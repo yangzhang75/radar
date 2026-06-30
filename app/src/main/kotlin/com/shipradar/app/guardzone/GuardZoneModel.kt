@@ -58,9 +58,38 @@ object GuardZoneModel {
     fun triggers(zone: GuardZone, targetBearingDeg: Double, targetRangeNm: Double): Boolean =
         zone.enabled && contains(zone, targetBearingDeg, targetRangeNm)
 
-    /** 返回某目标命中的所有启用区（供告警引擎/调试）。 */
+    /** 返回某目标命中的所有启用区（供告警引擎/调试）。注意:本重载要求方位与区同参系。 */
     fun zonesHit(zones: List<GuardZone>, targetBearingDeg: Double, targetRangeNm: Double): List<GuardZone> =
         zones.filter { triggers(it, targetBearingDeg, targetRangeNm) }
+
+    /**
+     * 基准感知的触发判定:目标方位 [targetBearingDeg] 的参系由 [targetIsTrueBearing] 指明(真/相对船首),
+     * 内部用本船航向 [ownHeadingDeg] 换算到本区 [GuardZone.trueBearing] 的参系再判定。覆盖"目标真/相对 ×
+     * 区真/相对"四种组合——修复跨参系比较导致的误报/漏报。[ownHeadingDeg] 为 null(无罗经)时按 0 处理。
+     */
+    fun triggersForTarget(
+        zone: GuardZone,
+        targetBearingDeg: Double,
+        targetIsTrueBearing: Boolean,
+        targetRangeNm: Double,
+        ownHeadingDeg: Double?,
+    ): Boolean {
+        val hdg = ownHeadingDeg ?: 0.0
+        val targetTrue = if (targetIsTrueBearing) targetBearingDeg else targetBearingDeg + hdg
+        val inZoneRef = if (zone.trueBearing) targetTrue else targetTrue - hdg
+        return triggers(zone, inZoneRef, targetRangeNm)
+    }
+
+    /** [triggersForTarget] 的批量版:返回被命中的启用区。 */
+    fun zonesHitForTarget(
+        zones: List<GuardZone>,
+        targetBearingDeg: Double,
+        targetIsTrueBearing: Boolean,
+        targetRangeNm: Double,
+        ownHeadingDeg: Double?,
+    ): List<GuardZone> = zones.filter {
+        triggersForTarget(it, targetBearingDeg, targetIsTrueBearing, targetRangeNm, ownHeadingDeg)
+    }
 
     /**
      * 区扇宽（度，顺时针自起方位扫到止方位）。起==止 视为整圈 360°。

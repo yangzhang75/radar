@@ -170,7 +170,7 @@ fun RadarScreen() {
     //   · 危险目标(CPA/TCPA 超限)→ 3044 碰撞报警(ALARM, IEC 62388 §11 / A.823 §3.5.2)
     //   · 进入启用的警戒圈 → 3048(WARNING)
     // SIM/LIVE 同源(targetList 两种模式均经 router 富化);稳定排序避免重组抖动。
-    val alarmEvents = remember(targetList, guardZones) {
+    val alarmEvents = remember(targetList, guardZones, ownShipState.headingDeg) {
         buildList {
             targetList.filter { it.dangerous }.sortedBy { it.id }.forEach { t ->
                 add(AlarmEvent(3044, AlarmPriority.ALARM, AlarmState.ACTIVE_UNACK, "CPA/TCPA ${t.id}", "RADAR"))
@@ -178,7 +178,11 @@ fun RadarScreen() {
             val enabledZones = guardZones.filter { it.enabled }
             if (enabledZones.isNotEmpty()) {
                 targetList.sortedBy { it.id }.forEach { t ->
-                    if (GuardZoneModel.zonesHit(enabledZones, t.bearingDeg, t.rangeNm).isNotEmpty()) {
+                    // 基准感知:目标方位(t.trueBearing)与区(可相对/可真)用本船航向换算后再判,避免误报/漏报。
+                    val hit = GuardZoneModel.zonesHitForTarget(
+                        enabledZones, t.bearingDeg, t.trueBearing, t.rangeNm, ownShipState.headingDeg,
+                    ).isNotEmpty()
+                    if (hit) {
                         add(AlarmEvent(3048, AlarmPriority.WARNING, AlarmState.ACTIVE_UNACK, "Target ${t.id} in guard zone", "RADAR"))
                     }
                 }
