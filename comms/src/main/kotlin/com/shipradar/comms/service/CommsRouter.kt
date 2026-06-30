@@ -29,12 +29,14 @@ import com.shipradar.contract.EchoSpoke
 import com.shipradar.contract.LinkState
 import com.shipradar.contract.ConningData
 import com.shipradar.contract.OwnShipData
+import com.shipradar.uicore.target.AisTargetBuilder
 import com.shipradar.uicore.target.CapacityMonitor
 import com.shipradar.uicore.target.ClutterControl
 import com.shipradar.uicore.target.DangerClassifier
 import com.shipradar.uicore.target.DangerCriteria
 import com.shipradar.uicore.target.EquipmentCategory
 import com.shipradar.uicore.target.PlotExtractionConfig
+import com.shipradar.uicore.target.TargetFusion
 import com.shipradar.uicore.target.RadarTrackingPipeline
 import com.shipradar.contract.RadarPowerState
 import com.shipradar.contract.RadarStatus
@@ -152,10 +154,13 @@ class CommsRouter(config: CommsConfig) {
 
     private fun publishTargets(raw: List<TrackedTarget>) {
         rawTargets = raw
-        val enriched = DangerClassifier.evaluateAll(_ownShip.value, raw, dangerCriteria)
+        // §5.30 de-dup: collapse associated radar-TT ↔ AIS pairs into one symbol before publishing.
+        val fused = TargetFusion.fuse(raw, _ownShip.value).fused
+        val enriched = DangerClassifier.evaluateAll(_ownShip.value, fused, dangerCriteria)
         _targets.value = enriched
         // A.823 §3.3.2 — raise new-target (3048) / lost-target (3052) on the confirmed radar-TT set.
-        val radarIds = enriched.asSequence()
+        // Use the RAW (pre-fusion) set so a radar-TT de-duped against AIS isn't mistaken for a lost target.
+        val radarIds = raw.asSequence()
             .filter { it.source == TargetSource.RADAR_TT && it.status == TargetStatus.TRACKED }
             .map { it.id }.toSet()
         val changes = radarLifecycle.update(radarIds)
@@ -165,7 +170,7 @@ class CommsRouter(config: CommsConfig) {
         for (id in changes.disappeared) {
             emitAlarms(alarmManager.raise(AlertCatalog.ID_LOST_TARGET, nowMillis = lastNow, text = "Lost target $id", source = "RADAR"))
         }
-        evaluateCapacity(enriched)
+        evaluateCapacity(raw) // capacity counts everything handled (pre-fusion)
     }
 
     /**
@@ -309,9 +314,17 @@ class CommsRouter(config: CommsConfig) {
             // ARC reasons surface via the manager's own RefuseAcn path. No bus emission needed.
             is ParsedSentence.AlertCommandRefused -> {}
             is ParsedSentence.AlertListUpdate -> {}
-            // AIS position reports are geographic-only; range/bearing fusion needs own-ship + ui-core
-            // geometry (T1.6/ui-core), so they are counted here, not synthesised into targets.
-            is ParsedSentence.AisPositionReport -> aisDeferred++
+            // AIS position report → georeference against own-ship into a unified AIS target, then publish
+            // (radar↔AIS de-dup happens in publishTargets via TargetFusion). Counted as deferred only if it
+            // can't be georeferenced yet (no own-ship fix).
+            is ParsedSentence.AisPositionReport -> {
+                val own = _ownShip.value
+                val t = AisTargetBuilder.build(
+                    mmsi = parsed.mmsi, targetLat = parsed.latitude, targetLon = parsed.longitude,
+                    cogDeg = parsed.cogDeg, sogKn = parsed.sogKn, ownLat = own.latitude, ownLon = own.longitude,
+                )
+                if (t != null) publishTargets(targetAggregator.upsert(t)) else aisDeferred++
+            }
             // W5-A secondary sentences not yet wired to the bus — TODO(T1.x), tracked in 认证缺口清单 D-class.
             is ParsedSentence.TargetGeoUpdate -> aisDeferred++   // TLL geo-only; needs own-ship/geometry fusion (T1.6)
             is ParsedSentence.TargetLabels -> {}                 // TLB label association: needs a target-label store

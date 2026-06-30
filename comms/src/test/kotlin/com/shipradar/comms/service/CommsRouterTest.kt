@@ -168,6 +168,30 @@ class CommsRouterTest {
         assertTrue(events.any { it.identifier == 3042 }, "expected 3042 capacity-exceeded, got ${events.map { it.identifier }.distinct()}")
     }
 
+    /** Wrap an already-complete sentence (own `!`/`$` + `*hh`) in a 61162-450 datagram. */
+    private fun frame450Raw(sentence: String): ByteArray {
+        fun xor(s: String) = s.fold(0) { a, c -> a xor c.code } and 0xFF
+        val src = "s:RA0001"
+        val line = "\\$src*${"%02X".format(xor(src))}\\" + sentence + "\r\n"
+        return "UdPbC".toByteArray(Charsets.ISO_8859_1) + byteArrayOf(0) + line.toByteArray(Charsets.ISO_8859_1)
+    }
+
+    @Test
+    fun `a radar TT and a co-located AIS target are fused to one symbol`() = runTest {
+        val r = CommsRouter(cfg)
+        // own ship at 30°00'N 122°00'E, stationary.
+        r.on450(Iec450Group.NAVD, frame450("GPRMC,123519,A,3000.000,N,12200.000,E,0.0,000.0,300625,,"), now = 1_000)
+        // AIS contact 2 NM due north (30°02'N) via a real simcore-encoded AIVDM.
+        val ais = com.shipradar.sim.ais.AisTarget(mmsi = 412345678, latitude = 30.0 + 2.0 / 60.0, longitude = 122.0, sogKn = 8.0, cogDeg = 0.0)
+        com.shipradar.sim.ais.AisEncoder.encodeTarget(ais).forEach { r.on450(Iec450Group.TGTD, frame450Raw(it), now = 2_000) }
+        // radar TT at the matching range/bearing (2 NM, 000°T), no course/speed → position-only fusion match.
+        r.on450(Iec450Group.TGTD, frame450("RATTM,01,2.0,000.0,T,,,,,,N,,T,,"), now = 3_000)
+
+        val targets = r.targets.value
+        assertEquals(1, targets.size, "co-located radar+AIS must fuse to a single symbol: $targets")
+        assertEquals(TargetSource.AIS_ACTIVE, targets.first().source, "AIS symbol kept by default (§5.30.1)")
+    }
+
     @Test
     fun `tick schedules reconnect for a lost channel`() {
         val r = CommsRouter(cfg)

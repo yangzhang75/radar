@@ -34,4 +34,5 @@ dependencies {
 
     testImplementation(libs.kotlin.test)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(project(":tools:simcore")) // 生成真实 AIVDM 做 AIS↔雷达融合端到端测试
 }

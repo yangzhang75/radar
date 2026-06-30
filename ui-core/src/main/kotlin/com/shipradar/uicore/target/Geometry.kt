@@ -66,6 +66,21 @@ object Geometry {
         }
     }
 
+    /**
+     * Convert a geographic target position to own-ship-relative **range (NM) + true bearing (deg)** using
+     * the equirectangular (flat-earth) approximation valid at radar ranges (same model as the NE plane
+     * note above; A.823 App.1 Note). Returns null if any coordinate is missing.
+     *   north(NM) = Δlat·60 ; east(NM) = Δlon·60·cos(ownLat) ; range = hypot ; bearing = atan2(east,north).
+     */
+    fun geoToRangeBearing(ownLat: Double?, ownLon: Double?, tgtLat: Double?, tgtLon: Double?): Pair<Double, Double>? {
+        if (ownLat == null || ownLon == null || tgtLat == null || tgtLon == null) return null
+        val north = (tgtLat - ownLat) * 60.0
+        val east = (tgtLon - ownLon) * 60.0 * cos(Math.toRadians(ownLat))
+        val range = hypot(east, north)
+        val bearing = normalizeDeg(Math.toDegrees(atan2(east, north)))
+        return range to bearing
+    }
+
     /** Target position relative to own ship, in the NE plane (NM). Returns null if bearing can't be resolved. */
     fun relativePosition(target: TrackedTarget, ownShip: OwnShipData): Vec2? {
         val tb = trueBearingDeg(target, ownShip.headingDeg) ?: return null
