@@ -27,6 +27,7 @@ import com.shipradar.contract.AlarmState
 import com.shipradar.contract.EchoSpoke
 import com.shipradar.contract.LinkState
 import com.shipradar.contract.OwnShipData
+import com.shipradar.uicore.target.RadarTrackingPipeline
 import com.shipradar.contract.RadarPowerState
 import com.shipradar.contract.RadarStatus
 import com.shipradar.contract.TrackedTarget
@@ -103,6 +104,11 @@ class CommsRouter(config: CommsConfig) {
     private val ownShipFusion = OwnShipFusion()
     private val targetAggregator = TargetAggregator()
 
+    // Radar-video target tracking: spokes → plots → tracks (ui-core). For an image-only radar like HALO
+    // (no on-board ARPA / TT packets) this is where radar TTs are *born from the echo image*. When a real
+    // radar also pushes TT packets via onHaloTarget, that snapshot path takes over instead.
+    private val trackingPipeline = RadarTrackingPipeline()
+
     // BAM alarm state machine — the single source of truth for alarm state. Inbound alerts (ALR/ALF)
     // are raised through it and inbound commands (ACN/ARC) drive its transitions, so a central alarm
     // panel can acknowledge/silence/transfer our alarms (IEC 62923-1 §6.3 / §6.9).
@@ -143,6 +149,10 @@ class CommsRouter(config: CommsConfig) {
             // Drop retransmit duplicates; everything else (in-order / gap / reordered) reaches the renderer.
             if (seqTracker.observe(spoke.sequenceNumber) != SeqClass.DUPLICATE) {
                 _echoSpokes.tryEmit(spoke)
+                // Feed the tracker; once a full revolution completes it returns the radar-TT snapshot.
+                trackingPipeline.onSpoke(spoke, now, _ownShip.value)?.let { tracks ->
+                    _targets.value = targetAggregator.replaceRadarSnapshot(tracks)
+                }
             }
         }
         return supervisor.onPacket(DataChannel.ECHO, now)

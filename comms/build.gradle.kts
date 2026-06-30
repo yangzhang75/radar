@@ -29,6 +29,7 @@ android {
 
 dependencies {
     api(project(":comms-core")) // transitively exposes :shared (frozen contract)
+    implementation(project(":ui-core")) // radar-video target tracking pipeline (PlotExtractor/TrackManager)
     implementation(libs.kotlinx.coroutines.core)
 
     testImplementation(libs.kotlin.test)
