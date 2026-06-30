@@ -30,9 +30,11 @@ import com.shipradar.contract.LinkState
 import com.shipradar.contract.ConningData
 import com.shipradar.contract.OwnShipData
 import com.shipradar.uicore.target.CapacityMonitor
+import com.shipradar.uicore.target.ClutterControl
 import com.shipradar.uicore.target.DangerClassifier
 import com.shipradar.uicore.target.DangerCriteria
 import com.shipradar.uicore.target.EquipmentCategory
+import com.shipradar.uicore.target.PlotExtractionConfig
 import com.shipradar.uicore.target.RadarTrackingPipeline
 import com.shipradar.contract.RadarPowerState
 import com.shipradar.contract.RadarStatus
@@ -123,6 +125,9 @@ class CommsRouter(config: CommsConfig) {
 
     /** HALO rangeCellSize→mm 换算(默认 mm;真机待确认可设 dm)。见 [CommsConfig.rangeUnitToMm]。 */
     private val rangeUnitToMm = config.rangeUnitToMm
+
+    /** Baseline plot-extraction config; clutter controls (GAIN/SEA/RAIN) retune it per status update. */
+    private val basePlotConfig = PlotExtractionConfig()
 
     // Collision assessment: the merged radar+AIS picture is enriched with CPA/TCPA + dangerous flag before
     // it is published, so every consumer (overlay red symbol, info panel, alarms) sees the same A.823
@@ -252,7 +257,11 @@ class CommsRouter(config: CommsConfig) {
     /** HALO status datagram (236.6.7.9): merge onto the running status snapshot. */
     fun onHaloStatus(bytes: ByteArray, now: Long): List<LinkAction> {
         lastNow = now; statusPkts++; statusLast = now
-        _radarStatus.value = statusParser.parseStatus(bytes).applyTo(_radarStatus.value)
+        val st = statusParser.parseStatus(bytes).applyTo(_radarStatus.value)
+        _radarStatus.value = st
+        // Anti-clutter: GAIN/SEA/RAIN retune the plot-extraction detection threshold (IEC 62388 §6).
+        trackingPipeline.extractorConfig =
+            ClutterControl.extractionConfig(basePlotConfig, gain = st.gain, seaLevel = st.seaLevel, rainLevel = st.rainLevel)
         return supervisor.onPacket(DataChannel.STATUS, now)
     }
 

@@ -45,11 +45,17 @@ class ScanAggregator(private val minSpokesPerScan: Int = 8) {
  * Stateful but pure (no I/O); deterministic for a given (spoke, time) stream — testable without a radar.
  */
 class RadarTrackingPipeline(
-    private val extractorConfig: PlotExtractionConfig = PlotExtractionConfig(),
+    extractorConfig: PlotExtractionConfig = PlotExtractionConfig(),
     trackerConfig: TrackerConfig = TrackerConfig(),
     /** Fallback revolution period used for the first scan (s), before two scan times are known. */
     private val nominalScanSeconds: Double = 2.5,
 ) {
+    /**
+     * Live plot-extraction config. Mutable so the anti-clutter controls (GAIN/SEA/RAIN via
+     * [ClutterControl]) can retune the detection threshold from [com.shipradar.contract.RadarStatus]
+     * without rebuilding the pipeline.
+     */
+    var extractorConfig: PlotExtractionConfig = extractorConfig
     private val aggregator = ScanAggregator()
     private val tracker = TrackManager(trackerConfig)
     private var lastScanTimeMs: Long = -1L
