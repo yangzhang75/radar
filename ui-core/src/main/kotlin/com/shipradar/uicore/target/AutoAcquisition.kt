@@ -12,6 +12,10 @@ data class RadarPlot(
     val rangeNm: Double,
     val trueBearingDeg: Double,
     val relativeSpeedKn: Double? = null,
+    /** Peak echo amplitude (0..15) of the detected cluster — stronger plots are preferred for tracking. */
+    val amplitudePeak: Double? = null,
+    /** Number of above-threshold cells in the cluster — used to reject speckle and land/rain blobs. */
+    val cellCount: Int? = null,
 )
 
 /**
