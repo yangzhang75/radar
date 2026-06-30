@@ -29,8 +29,10 @@ import com.shipradar.contract.EchoSpoke
 import com.shipradar.contract.LinkState
 import com.shipradar.contract.ConningData
 import com.shipradar.contract.OwnShipData
+import com.shipradar.uicore.target.CapacityMonitor
 import com.shipradar.uicore.target.DangerClassifier
 import com.shipradar.uicore.target.DangerCriteria
+import com.shipradar.uicore.target.EquipmentCategory
 import com.shipradar.uicore.target.RadarTrackingPipeline
 import com.shipradar.contract.RadarPowerState
 import com.shipradar.contract.RadarStatus
@@ -132,6 +134,11 @@ class CommsRouter(config: CommsConfig) {
     private val radarLifecycle = TargetLifecycle()
     @Volatile private var lastNow = 0L
 
+    /** Target-capacity alert level: 0 normal, 1 near-limit (3043), 2 over-limit (3042). Edge-triggered. */
+    private var capacityLevel = 0
+    /** Equipment category whose minimum capacities are monitored (CAP-01, default CAT 1). */
+    @Volatile private var capacityCategory = EquipmentCategory.CAT_1
+
     /** Operator-settable CPA/TCPA close-quarters limits; re-publishes the current picture immediately. */
     fun setDangerCriteria(criteria: DangerCriteria) {
         dangerCriteria = criteria
@@ -153,6 +160,33 @@ class CommsRouter(config: CommsConfig) {
         for (id in changes.disappeared) {
             emitAlarms(alarmManager.raise(AlertCatalog.ID_LOST_TARGET, nowMillis = lastNow, text = "Lost target $id", source = "RADAR"))
         }
+        evaluateCapacity(enriched)
+    }
+
+    /**
+     * Target-capacity monitoring (CAP-01; IEC 62388 §11.3.5/§11.5.2). Edge-triggered against the
+     * [capacityCategory] minimums: raise 3042 (over) / 3043 (near) on entering the band, and emit a NORMAL
+     * to clear when the count drops back. Idempotent across the frequent [publishTargets] calls.
+     */
+    private fun evaluateCapacity(targets: List<TrackedTarget>) {
+        val report = CapacityMonitor.evaluate(targets, capacityCategory)
+        val newLevel = when {
+            report.anyOverLimit -> 2
+            report.anyNearLimit() -> 1
+            else -> 0
+        }
+        if (newLevel == capacityLevel) return
+        when (newLevel) {
+            2 -> _alarms.tryEmit(AlarmEvent(AlertCatalog.ID_TARGET_CAPACITY_ALARM, AlarmPriority.WARNING, AlarmState.ACTIVE_UNACK, "Target capacity exceeded", "RADAR", lastNow))
+            1 -> _alarms.tryEmit(AlarmEvent(AlertCatalog.ID_TARGET_CAPACITY_CAUTION, AlarmPriority.CAUTION, AlarmState.ACTIVE_UNACK, "Target capacity about to be exceeded", "RADAR", lastNow))
+            else -> {
+                // back to normal: clear whichever capacity alert was active.
+                val id = if (capacityLevel == 2) AlertCatalog.ID_TARGET_CAPACITY_ALARM else AlertCatalog.ID_TARGET_CAPACITY_CAUTION
+                val prio = if (capacityLevel == 2) AlarmPriority.WARNING else AlarmPriority.CAUTION
+                _alarms.tryEmit(AlarmEvent(id, prio, AlarmState.NORMAL, "Target capacity normal", "RADAR", lastNow))
+            }
+        }
+        capacityLevel = newLevel
     }
 
     // BAM alarm state machine — the single source of truth for alarm state. Inbound alerts (ALR/ALF)

@@ -155,6 +155,20 @@ class CommsRouterTest {
     }
 
     @Test
+    fun `exceeding CAT1 tracked-target capacity raises a 3042 alarm`() = runTest {
+        val r = CommsRouter(cfg)
+        val events = mutableListOf<AlarmEvent>()
+        backgroundScope.launch { r.alarms.collect { events += it } }
+        runCurrent()
+        // CAT 1 radar-TT minimum capacity is 40; feed 41 distinct tracked targets → over-limit (3042).
+        for (n in 1..41) {
+            r.on450(Iec450Group.TGTD, frame450("RATTM,$n,1.0,090.0,T,5.0,270.0,T,,,N,,T,,"), now = 1_000L + n)
+            runCurrent()
+        }
+        assertTrue(events.any { it.identifier == 3042 }, "expected 3042 capacity-exceeded, got ${events.map { it.identifier }.distinct()}")
+    }
+
+    @Test
     fun `tick schedules reconnect for a lost channel`() {
         val r = CommsRouter(cfg)
         r.onTick(12_000) // ECHO/STATUS go LOST, first reconnect scheduled ~1s later
