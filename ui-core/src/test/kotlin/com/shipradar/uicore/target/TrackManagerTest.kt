@@ -125,6 +125,37 @@ class TrackManagerTest {
     }
 
     @Test
+    fun `a target that reappears soon after loss keeps its track id`() {
+        val tm = TrackManager(TrackerConfig(confirmHits = 2, maxCoastScans = 2, reacquireScans = 3, reacquireGateNm = 1.0))
+        // confirm a (stationary) target at bearing 90, range 3 → id assigned, status TRACKED.
+        tm.update(listOf(plot(3.0, 90.0)), DT)
+        val confirmed = tm.update(listOf(plot(3.0, 90.0)), DT).first()
+        assertEquals(TargetStatus.TRACKED, confirmed.status)
+        val originalId = confirmed.id
+        // disappears: 3 empty scans → dropped into re-acquisition memory.
+        repeat(3) { tm.update(emptyList(), DT) }
+        assertEquals(0, tm.trackCount); assertEquals(1, tm.lostCount)
+        // reappears near its last position → must revive the SAME id, immediately TRACKED.
+        val revived = tm.update(listOf(plot(3.0, 90.0)), DT)
+        assertEquals(1, revived.size)
+        assertEquals(originalId, revived.first().id, "reappearing target must keep its id")
+        assertEquals(TargetStatus.TRACKED, revived.first().status)
+        assertEquals(0, tm.lostCount, "memory consumed on re-acquisition")
+    }
+
+    @Test
+    fun `a target reappearing after the memory window gets a fresh id`() {
+        val tm = TrackManager(TrackerConfig(confirmHits = 2, maxCoastScans = 1, reacquireScans = 2, reacquireGateNm = 1.0))
+        tm.update(listOf(plot(3.0, 90.0)), DT)
+        val originalId = tm.update(listOf(plot(3.0, 90.0)), DT).first().id
+        // long absence: drop (2 empties) then exceed the 2-scan memory window.
+        repeat(6) { tm.update(emptyList(), DT) }
+        assertEquals(0, tm.lostCount, "memory must expire")
+        val fresh = tm.update(listOf(plot(3.0, 90.0)), DT).first()
+        assertTrue(fresh.id != originalId, "after the window, a reappearing target is a new track")
+    }
+
+    @Test
     fun `reset clears all tracks`() {
         val tm = TrackManager()
         tm.update(listOf(plot(2.0, 0.0), plot(3.0, 90.0)), DT)

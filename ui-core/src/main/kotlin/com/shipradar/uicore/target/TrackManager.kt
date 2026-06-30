@@ -52,11 +52,16 @@ data class TrackerConfig(
     val confirmHits: Int = 3,
     /** Consecutive misses a confirmed track may coast before being dropped (A.823 §3.6). */
     val maxCoastScans: Int = 3,
+    /** Scans a dropped (confirmed) track is remembered for re-acquisition before being forgotten. */
+    val reacquireScans: Int = 3,
+    /** Wider gate (NM) for matching a reappearing plot to a recently-lost track (keeps the same id). */
+    val reacquireGateNm: Double = 1.0,
 ) {
     init {
         require(gateNm > 0) { "gateNm must be > 0" }
         require(alpha in 0.0..1.0 && beta in 0.0..1.0) { "alpha/beta must be in 0..1" }
         require(confirmHits >= 1 && maxCoastScans >= 0) { "invalid lifecycle counts" }
+        require(reacquireScans >= 0 && reacquireGateNm > 0) { "invalid re-acquisition config" }
     }
 }
 
@@ -72,15 +77,22 @@ class TrackManager(private val config: TrackerConfig = TrackerConfig()) {
         var confirmed: Boolean,
     )
 
+    /** A recently-dropped confirmed track, kept briefly so a reappearing echo keeps the same id (A.823 §3.3). */
+    private class LostTrack(val id: String, var pos: Vec2, val vel: Vec2, var age: Int)
+
     private val tracks = ArrayList<Track>()
+    private val lostMemory = ArrayList<LostTrack>()
     private var nextId = 1
 
     /** Live track count (any non-dropped track), for tests/diagnostics. */
     val trackCount: Int get() = tracks.size
+    /** Count of tracks held in re-acquisition memory (dropped but not yet forgotten). */
+    val lostCount: Int get() = lostMemory.size
 
     /** Reset all state (e.g. on transmit restart or range change that invalidates the picture). */
     fun reset() {
         tracks.clear()
+        lostMemory.clear()
         nextId = 1
     }
 
@@ -93,8 +105,10 @@ class TrackManager(private val config: TrackerConfig = TrackerConfig()) {
     fun update(plots: List<RadarPlot>, dtSeconds: Double, ownShip: OwnShipData? = null): List<TrackedTarget> {
         val dtH = dtSeconds / 3600.0
 
-        // 1) predict.
+        // 1) predict active tracks, and extrapolate + age the re-acquisition memory (forget the stale ones).
         for (t in tracks) t.pos = t.pos + t.vel * dtH
+        for (l in lostMemory) { l.pos = l.pos + l.vel * dtH; l.age++ }
+        lostMemory.removeAll { it.age > config.reacquireScans }
 
         // 2) associate: greedy nearest-neighbour within the gate.
         val measurements = plots.map { it to Vec2.ofBearing(it.trueBearingDeg, it.rangeNm) }
@@ -133,16 +147,27 @@ class TrackManager(private val config: TrackerConfig = TrackerConfig()) {
             }
         }
 
-        // 4) initiate new tentative tracks from unmatched plots.
+        // 4) drop tracks that have coasted too long; remember confirmed ones for possible re-acquisition.
+        val dropped = tracks.filter { it.misses > config.maxCoastScans }
+        for (t in dropped) if (t.confirmed) lostMemory.add(LostTrack(t.id, t.pos, t.vel, age = 0))
+        tracks.removeAll { it.misses > config.maxCoastScans }
+
+        // 5) unmatched plots: re-acquire a recently-lost track (keep its id) if one is within the wider
+        //    re-acquisition gate, otherwise initiate a new tentative track.
         for (pi in measurements.indices) {
             if (plotUsed[pi]) continue
-            tracks.add(
-                Track(id = "T${nextId++}", pos = measurements[pi].second, vel = Vec2(0.0, 0.0), hits = 1, misses = 0, confirmed = false),
-            )
+            val z = measurements[pi].second
+            val revived = lostMemory
+                .map { it to (it.pos - z).norm() }
+                .filter { it.second <= config.reacquireGateNm }
+                .minByOrNull { it.second }?.first
+            if (revived != null) {
+                lostMemory.remove(revived)
+                tracks.add(Track(id = revived.id, pos = z, vel = revived.vel, hits = config.confirmHits, misses = 0, confirmed = true))
+            } else {
+                tracks.add(Track(id = "T${nextId++}", pos = z, vel = Vec2(0.0, 0.0), hits = 1, misses = 0, confirmed = false))
+            }
         }
-
-        // 5) drop tracks that have coasted too long.
-        tracks.removeAll { it.misses > config.maxCoastScans }
 
         // emit.
         val ownVel = ownShip?.let { Geometry.ownVelocity(it) }
