@@ -57,6 +57,16 @@ object DemoFeed {
                     now = now,
                 )
             }
+            // Conning/机舱数据(舵角 RSA / 双机转速 RPM / 水深 DPT)—— 驱动右栏 conning 仪表。
+            if (spoke % 64 == 32) {
+                val rudder = 6.0 * sin(tick / 3000.0)        // ±6° 缓慢摆舵
+                val rpm = 1500.0 + 40.0 * sin(tick / 4200.0) // ~1500 r/min 双机
+                val depth = 42.0 + 6.0 * sin(tick / 5500.0)  // ~42 m 水深
+                router.on450(Iec450Group.NAVD, frame450("AGRSA,${"%.1f".format(rudder)},A,,V"), now = now)
+                router.on450(Iec450Group.NAVD, frame450("ERRPM,S,1,${"%.0f".format(rpm)},,A"), now = now) // 奇=右
+                router.on450(Iec450Group.NAVD, frame450("ERRPM,S,2,${"%.0f".format(rpm)},,A"), now = now) // 偶=左
+                router.on450(Iec450Group.NAVD, frame450("SDDPT,${"%.1f".format(depth)},0.0,"), now = now)
+            }
             spoke = (spoke + 1) % SPOKES_PER_REV
             if (spoke == 0) rev++ // 整圈完成 → 驱动逼近目标每圈靠近
             seq = (seq + 1) and 0x0FFF

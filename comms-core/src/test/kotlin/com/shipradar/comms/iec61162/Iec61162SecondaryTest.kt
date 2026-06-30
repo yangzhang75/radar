@@ -64,6 +64,39 @@ class Iec61162SecondaryTest {
         assertEquals(mapOf("1" to "TARGET1", "2" to "TGT2"), r.labels)
     }
 
+    // ---- Conning / engine (RSA / RPM / DPT / DBT) ---------------------------------------------
+
+    @Test fun rsa_single_rudder_angle() {
+        // §8.3.86: starboard/main rudder 6.0° (status A); port field empty/V → null.
+        val r = parser.parse("\$AGRSA,6.0,A,,V*79") as ParsedSentence.ConningUpdate
+        assertEquals(6.0, r.data.rudderAngleDeg!!, tol)
+        assertNull(r.data.portRudderAngleDeg)
+    }
+
+    @Test fun rsa_twin_rudder_port_only() {
+        // starboard status V (invalid) → null; port −4.5° valid.
+        val r = parser.parse("\$AGRSA,,V,-4.5,A*53") as ParsedSentence.ConningUpdate
+        assertNull(r.data.rudderAngleDeg)
+        assertEquals(-4.5, r.data.portRudderAngleDeg!!, tol)
+    }
+
+    @Test fun rpm_odd_number_is_starboard_even_is_port() {
+        // §8.3.84: shaft #1 (odd) → starboard; #2 (even) → port.
+        val s = parser.parse("\$ERRPM,S,1,1500,,A*53") as ParsedSentence.ConningUpdate
+        assertEquals(1500.0, s.data.rpmStbd!!, tol); assertNull(s.data.rpmPort)
+        val p = parser.parse("\$ERRPM,S,2,1480,,A*59") as ParsedSentence.ConningUpdate
+        assertEquals(1480.0, p.data.rpmPort!!, tol); assertNull(p.data.rpmStbd)
+    }
+
+    @Test fun dpt_and_dbt_give_depth_in_metres() {
+        // §8.3.28 DPT: below transducer 42.0 m + offset 0 → 42.0 m.
+        val dpt = parser.parse("\$SDDPT,42.0,0.0,*4D") as ParsedSentence.ConningUpdate
+        assertEquals(42.0, dpt.data.depthM!!, tol)
+        // §8.3.25 DBT: metres field (3rd) = 42.0 m.
+        val dbt = parser.parse("\$SDDBT,137.8,f,42.0,M,22.9,F*04") as ParsedSentence.ConningUpdate
+        assertEquals(42.0, dbt.data.depthM!!, tol)
+    }
+
     @Test fun rsd_radar_system_data_cursor_ebl_vrm() {
         // §8.3.87: VRM1 12 NM, EBL1 135°, VRM2 6 NM, EBL2 90°, cursor 3.5 NM @45°, scale 12 NM,
         // units N(nm), rotation N(north-up).

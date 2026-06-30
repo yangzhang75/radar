@@ -2,6 +2,7 @@ package com.shipradar.comms.iec61162
 
 import com.shipradar.comms.alarm.AlertCatalog
 import com.shipradar.contract.AlarmEvent
+import com.shipradar.contract.ConningData
 import com.shipradar.contract.AlarmPriority
 import com.shipradar.contract.AlarmState
 import com.shipradar.contract.OwnShipData
@@ -75,6 +76,10 @@ class Iec61162Parser {
             "TLL" -> parseTll(f)
             "TLB" -> parseTlb(f)
             "RSD" -> parseRsd(f)
+            "RSA" -> parseRsa(f)
+            "RPM" -> parseRpm(f)
+            "DPT" -> parseDpt(f)
+            "DBT" -> parseDbt(f)
             "ALF" -> parseAlf(f)
             "ALR" -> parseAlr(f)
             "ALC" -> parseAlc(f)
@@ -498,6 +503,42 @@ class Iec61162Parser {
             orientation = DisplayOrientation.fromCode(f.field(13)),
         ))
     }
+
+    /** §8.3.86 RSA — Rudder sensor angle. `$--RSA,x.x,A,x.x,A*hh` (starboard/main, status, port, status). */
+    private fun parseRsa(f: SentenceFrame): ParsedSentence? {
+        val stbd = Fields.parseDouble(f.field(1))?.takeIf { f.field(2)?.uppercase() != "V" }
+        val port = Fields.parseDouble(f.field(3))?.takeIf { f.field(4)?.uppercase() != "V" }
+        if (stbd == null && port == null) return null
+        return conning(f, ConningData(rudderAngleDeg = stbd, portRudderAngleDeg = port))
+    }
+
+    /** §8.3.84 RPM — Revolutions. `$--RPM,a,x,x.x,x.x,A*hh` (source S/E, number, rev/min, pitch%, status).
+     *  Odd shaft/engine number = starboard, even = port; 0 (single/centre) is treated as starboard. */
+    private fun parseRpm(f: SentenceFrame): ParsedSentence? {
+        if (f.field(5)?.uppercase() == "V") return null // invalid
+        val rpm = Fields.parseDouble(f.field(3)) ?: return null
+        val number = Fields.parseInt(f.field(2)) ?: 0
+        val starboard = number == 0 || number % 2 != 0
+        return conning(f, if (starboard) ConningData(rpmStbd = rpm) else ConningData(rpmPort = rpm))
+    }
+
+    /** §8.3.28 DPT — Depth. `$--DPT,x.x,x.x,x.x*hh` (below transducer m, offset m, max range m). */
+    private fun parseDpt(f: SentenceFrame): ParsedSentence? {
+        val below = Fields.parseDouble(f.field(1)) ?: return null
+        val offset = Fields.parseDouble(f.field(2)) ?: 0.0
+        // offset > 0 = transducer-to-waterline ⇒ depth below waterline = below + offset; negative offset
+        // (transducer-to-keel) is left out of the waterline figure.
+        return conning(f, ConningData(depthM = below + offset.coerceAtLeast(0.0)))
+    }
+
+    /** §8.3.25 DBT — Depth below transducer. `$--DBT,x.x,f,x.x,M,x.x,F*hh` (feet, metres, fathoms). */
+    private fun parseDbt(f: SentenceFrame): ParsedSentence? {
+        val metres = Fields.parseDouble(f.field(3)) ?: return null // field 3 = depth in metres
+        return conning(f, ConningData(depthM = metres))
+    }
+
+    private fun conning(f: SentenceFrame, data: ConningData): ParsedSentence =
+        ParsedSentence.ConningUpdate(f.talker, f.formatter, data)
 
     /** §8.3.13 ALC — Cyclic alert list. `$--ALC,xx,xx,xx,x.x,{aaa,x.x,x.x,x.x}...*hh`. */
     private fun parseAlc(f: SentenceFrame): ParsedSentence {

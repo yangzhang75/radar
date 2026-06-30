@@ -10,6 +10,7 @@ import com.shipradar.constants.Endpoint
 import com.shipradar.constants.HaloEndpoints
 import com.shipradar.constants.HaloOpcodes
 import com.shipradar.contract.AlarmEvent
+import com.shipradar.contract.ConningData
 import com.shipradar.contract.EchoSpoke
 import com.shipradar.contract.LinkState
 import com.shipradar.contract.OwnShipData
@@ -57,6 +58,8 @@ class RadarCommsEngine(
     fun dataLinkSnapshot(nowMs: Long): DataLinkStats = router.dataLinkSnapshot(nowMs)
     override val targets: StateFlow<List<TrackedTarget>> get() = router.targets
     override val ownShip: StateFlow<OwnShipData> get() = router.ownShip
+    /** Conning/engine read-outs (rudder/RPM/depth) fused from RSA/RPM/DPT — drives the conning panel. */
+    val conning: StateFlow<ConningData> get() = router.conning
     override val radarStatus: StateFlow<RadarStatus> get() = router.radarStatus
     override val alarms: Flow<AlarmEvent> get() = router.alarms
     override val linkState: StateFlow<LinkState> get() = router.linkState

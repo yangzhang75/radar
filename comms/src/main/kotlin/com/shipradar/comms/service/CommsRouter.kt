@@ -26,6 +26,7 @@ import com.shipradar.contract.AlarmPriority
 import com.shipradar.contract.AlarmState
 import com.shipradar.contract.EchoSpoke
 import com.shipradar.contract.LinkState
+import com.shipradar.contract.ConningData
 import com.shipradar.contract.OwnShipData
 import com.shipradar.uicore.target.DangerClassifier
 import com.shipradar.uicore.target.DangerCriteria
@@ -82,6 +83,9 @@ class CommsRouter(config: CommsConfig) {
 
     private val _ownShip = MutableStateFlow(OwnShipData())
     val ownShip: StateFlow<OwnShipData> get() = _ownShip.asStateFlow()
+
+    private val _conning = MutableStateFlow(ConningData())
+    val conning: StateFlow<ConningData> get() = _conning.asStateFlow()
 
     private val _radarStatus = MutableStateFlow(RadarStatus(powerState = RadarPowerState.OFF))
     val radarStatus: StateFlow<RadarStatus> get() = _radarStatus.asStateFlow()
@@ -220,6 +224,8 @@ class CommsRouter(config: CommsConfig) {
                 publishTargets(rawTargets) // own-ship motion changed → recompute CPA/TCPA on the current picture
             }
             is ParsedSentence.TargetUpdate -> publishTargets(targetAggregator.upsert(parsed.target))
+            // Conning/engine sentence (RSA/RPM/DPT/DBT) → merge onto the running conning snapshot.
+            is ParsedSentence.ConningUpdate -> _conning.value = _conning.value.mergedWith(parsed.data)
             // Inbound alert (ALR/ALF) → raise through the BAM state machine, emit the resulting event.
             is ParsedSentence.AlertUpdate -> emitAlarms(
                 alarmManager.raise(

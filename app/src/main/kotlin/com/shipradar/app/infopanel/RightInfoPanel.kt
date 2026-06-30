@@ -23,6 +23,7 @@ import com.shipradar.app.conning.CompassGauge
 import com.shipradar.app.conning.InstrumentField
 import com.shipradar.app.control.RadarDisplaySettings
 import com.shipradar.app.framework.OpenBridge
+import com.shipradar.contract.ConningData
 import com.shipradar.contract.OwnShipData
 import com.shipradar.contract.TargetSource
 import com.shipradar.contract.TrackedTarget
@@ -38,6 +39,7 @@ fun RightInfoPanel(
     ownShip: OwnShipData,
     targets: List<TrackedTarget>,
     display: RadarDisplaySettings,
+    conning: ConningData = ConningData(),
     selected: TrackedTarget? = null,
     simulated: Boolean = true,
     onToggleSource: () -> Unit = {},
@@ -105,6 +107,18 @@ fun RightInfoPanel(
                 InstrumentField("COG", ownShip.cogDeg, "°T", fractionDigits = 1, maxDigits = 3)
                 InstrumentField("SOG", ownShip.sogKn, "kn", fractionDigits = 1, maxDigits = 2)
                 InstrumentField("ROT", ownShip.rotDegMin, "°/m", fractionDigits = 0, maxDigits = 3)
+            }
+        }
+        // OpenBridge conning 仪表(对齐 JRC 右侧那一列):舵角 / 双机转速 / 水深,由 RSA/RPM/DPT 驱动。
+        // 2×2 布局,避免 4 瓦片挤一行(右栏 248dp)。
+        Section("CONNING") {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                InstrumentField("RUDDER", conning.rudderAngleDeg, "°", fractionDigits = 0, maxDigits = 2)
+                InstrumentField("DEPTH", conning.depthM, "m", fractionDigits = 1, maxDigits = 3)
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                InstrumentField("RPM P", conning.rpmPort ?: conning.rpmStbd, "r/m", fractionDigits = 0, maxDigits = 4)
+                InstrumentField("RPM S", conning.rpmStbd, "r/m", fractionDigits = 0, maxDigits = 4)
             }
         }
         Section("OWN SHIP") {

@@ -1,6 +1,7 @@
 package com.shipradar.comms.iec61162
 
 import com.shipradar.contract.AlarmEvent
+import com.shipradar.contract.ConningData
 import com.shipradar.contract.OwnShipData
 import com.shipradar.contract.TargetStatus
 import com.shipradar.contract.TrackedTarget
@@ -32,6 +33,13 @@ sealed interface ParsedSentence {
         override val talker: String,
         override val formatter: String,
         val data: OwnShipData,
+    ) : ParsedSentence
+
+    /** A conning/engine sentence (RSA rudder, RPM shaft/engine, DPT/DBT depth) — partial [ConningData]. */
+    data class ConningUpdate(
+        override val talker: String,
+        override val formatter: String,
+        val data: ConningData,
     ) : ParsedSentence
 
     /** A radar/ARPA tracked-target sentence (TTM) carrying range/bearing directly. */

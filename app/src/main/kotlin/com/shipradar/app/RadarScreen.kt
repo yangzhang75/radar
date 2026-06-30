@@ -140,6 +140,9 @@ fun RadarScreen() {
     // 二者在 router 内融合。LIVE 走绑定服务的 engine.targets。(此前 SIM 用静态 FakeTargets 占位,已废弃。)
     val targetsFlow = if (live) (boundEngine?.targets ?: liveTargets) else router.targets
     val targetList by targetsFlow.collectAsState()
+    // Conning/engine read-outs(舵角/转速/水深)—— SIM/REPLAY 走 router,LIVE 走绑定服务 engine。
+    val liveConning = remember { MutableStateFlow(com.shipradar.contract.ConningData()) }
+    val conning by (if (live) (boundEngine?.conning ?: liveConning) else router.conning).collectAsState()
     val status by (if (live) (boundEngine?.radarStatus ?: liveStatus) else sim.status).collectAsState()
     val controller: RadarController = if (live) (boundEngine ?: sim) else sim
 
@@ -441,6 +444,7 @@ fun RadarScreen() {
                     ownShip = ownShipState,
                     targets = targetList,
                     display = display,
+                    conning = conning,
                     selected = selectedTarget,
                     simulated = !live,
                     onToggleSource = { live = !live },
