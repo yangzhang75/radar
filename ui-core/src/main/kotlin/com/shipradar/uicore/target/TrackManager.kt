@@ -29,16 +29,28 @@ import kotlin.math.hypot
  *
  * Pure and deterministic given the (plots, dt) sequence — fully unit-testable without a real radar.
  */
+/**
+ * Tracker tuning. Defaults are chosen to meet the certification performance envelope and are locked by
+ * [com.shipradar.uicore.target] accuracy tests:
+ *  - **IMO A.823(19) §3.4 + Appendix 1 / IEC 62388 §11** — after **1 min** of steady-state tracking the
+ *    presented trend must be within ≈±11° course / ±1.5 kn (or ±10%) speed / ±1.0 NM CPA; tighter at 3 min.
+ *    The [alpha]/[beta] α-β gains converge inside those bounds within 24 scans (≈1 min at ~24 rpm) — see
+ *    `TrackingAccuracyTest`.
+ *  - **A.823 §3.2** — acquisition: [confirmHits] = 3 scans promotes a plot to a tracked target quickly.
+ *  - **A.823 §3.6 / §3.3** — a target that stops being detected is coasted (predicted) for
+ *    [maxCoastScans] revolutions before being dropped (avoids dropping on a single missed paint while
+ *    still flagging genuinely lost targets — drives the 3052 "lost target" warning upstream).
+ */
 data class TrackerConfig(
     /** Association gate radius (NM): a plot beyond this from a track's prediction can't update it. */
     val gateNm: Double = 0.5,
-    /** Position smoothing gain (0..1) — higher trusts the new measurement more. */
+    /** Position smoothing gain (0..1) — higher trusts the new measurement more. A.823 §3.4 convergence. */
     val alpha: Double = 0.5,
-    /** Velocity smoothing gain (0..1). */
+    /** Velocity smoothing gain (0..1). Tuned with [alpha] for 1-min steady-state accuracy (A.823 App.1). */
     val beta: Double = 0.3,
-    /** Hits required for a tentative track to become confirmed (M-of-N initiation). */
+    /** Hits required for a tentative track to become confirmed (M-of-N initiation, A.823 §3.2). */
     val confirmHits: Int = 3,
-    /** Consecutive misses a confirmed track may coast before being dropped. */
+    /** Consecutive misses a confirmed track may coast before being dropped (A.823 §3.6). */
     val maxCoastScans: Int = 3,
 ) {
     init {
