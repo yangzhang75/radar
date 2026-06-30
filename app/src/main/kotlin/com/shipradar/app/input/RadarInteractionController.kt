@@ -285,6 +285,28 @@ object RadarInteractionController {
         return bestId
     }
 
+    /**
+     * Snap EBL#0 / VRM#0 onto the nearest tracked target to their current intersection (measurement aid).
+     * The EBL bearing is matched in its own reference (true/relative via [InteractionContext.ownHeadingDeg]);
+     * both tools are enabled. No-op (model unchanged) when no target lies within [gateNm].
+     */
+    fun snapEblVrm(model: InteractionModel, ctx: InteractionContext, ic: InputClass, gateNm: Double = 1.0): Update {
+        val ebl = model.ebls.firstOrNull() ?: return Update(model)
+        val vrm = model.vrms.firstOrNull() ?: return Update(model)
+        val hdg = ctx.ownHeadingDeg ?: 0.0
+        val refTrue = if (ebl.reference == BearingReference.TRUE) ebl.bearingDeg else ebl.bearingDeg + hdg
+        val target = TargetSnap.nearestTo(ctx.targets, refTrue, vrm.rangeNm, gateNm) ?: return Update(model)
+        val newEblBearing = Angles.normalizeDeg(
+            if (ebl.reference == BearingReference.TRUE) target.bearingDeg else target.bearingDeg - hdg,
+        )
+        val next = model.copy(
+            ebls = model.ebls.replaceAt(0, ebl.copy(enabled = true, bearingDeg = newEblBearing)),
+            vrms = model.vrms.replaceAt(0, vrm.copy(enabled = true, rangeNm = target.rangeNm)),
+        )
+        if (next == model) return Update(model)
+        return Update(next)
+    }
+
     private fun clearTool(current: ActiveTool, ifMatches: ActiveTool): ActiveTool =
         if (current == ifMatches) ActiveTool.None else current
 
