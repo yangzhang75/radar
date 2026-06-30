@@ -151,15 +151,6 @@ fun RadarScreen() {
     // Hoisted interaction state so target selection + EBL/VRM drive the info panel and on-PPI boxes.
     val interaction = rememberRadarInteractionState()
     val selectedTarget = targetList.firstOrNull { it.id == interaction.model.selectedTargetId }
-    val alarms = if (live) {
-        AlarmPresentation.uiStateOf(emptyList())                    // LIVE 报警接 engine.alarms(后续)
-    } else {
-        AlarmPresentation.uiStateOf(
-            listOf(
-                AlarmEvent(3048, AlarmPriority.WARNING, AlarmState.ACTIVE_UNACK, "New target in guard zone", "RADAR"),
-            ),
-        )
-    }
 
     var showHelp by remember { mutableStateOf(false) }
     var showMonitor by remember { mutableStateOf(false) }
@@ -170,6 +161,27 @@ fun RadarScreen() {
     var showTracks by remember { mutableStateOf(false) }
     // 报警圈状态 hoist:面板编辑 + PPI 轮廓共用同一份。
     var guardZones by remember { mutableStateOf(List(GuardZoneModel.ZONE_COUNT) { GuardZone(zone = it) }) }
+
+    // 碰撞预警闭环:由富化后的目标(router 已算 CPA/TCPA/dangerous)+ 警戒圈生成报警事件。
+    //   · 危险目标(CPA/TCPA 超限)→ 3044 碰撞报警(ALARM, IEC 62388 §11 / A.823 §3.5.2)
+    //   · 进入启用的警戒圈 → 3048(WARNING)
+    // SIM/LIVE 同源(targetList 两种模式均经 router 富化);稳定排序避免重组抖动。
+    val alarmEvents = remember(targetList, guardZones) {
+        buildList {
+            targetList.filter { it.dangerous }.sortedBy { it.id }.forEach { t ->
+                add(AlarmEvent(3044, AlarmPriority.ALARM, AlarmState.ACTIVE_UNACK, "CPA/TCPA ${t.id}", "RADAR"))
+            }
+            val enabledZones = guardZones.filter { it.enabled }
+            if (enabledZones.isNotEmpty()) {
+                targetList.sortedBy { it.id }.forEach { t ->
+                    if (GuardZoneModel.zonesHit(enabledZones, t.bearingDeg, t.rangeNm).isNotEmpty()) {
+                        add(AlarmEvent(3048, AlarmPriority.WARNING, AlarmState.ACTIVE_UNACK, "Target ${t.id} in guard zone", "RADAR"))
+                    }
+                }
+            }
+        }
+    }
+    val alarms = AlarmPresentation.uiStateOf(alarmEvents)
     // 偏心显示(O 键):归一化偏移,驱动 PPI 投影 + 各叠加层同一本船中心。
     var showView by remember { mutableStateOf(false) }
     val viewCtl = rememberViewControlState()

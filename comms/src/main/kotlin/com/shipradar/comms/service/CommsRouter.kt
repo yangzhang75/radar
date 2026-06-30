@@ -27,6 +27,8 @@ import com.shipradar.contract.AlarmState
 import com.shipradar.contract.EchoSpoke
 import com.shipradar.contract.LinkState
 import com.shipradar.contract.OwnShipData
+import com.shipradar.uicore.target.DangerClassifier
+import com.shipradar.uicore.target.DangerCriteria
 import com.shipradar.uicore.target.RadarTrackingPipeline
 import com.shipradar.contract.RadarPowerState
 import com.shipradar.contract.RadarStatus
@@ -109,6 +111,23 @@ class CommsRouter(config: CommsConfig) {
     // radar also pushes TT packets via onHaloTarget, that snapshot path takes over instead.
     private val trackingPipeline = RadarTrackingPipeline()
 
+    // Collision assessment: the merged radar+AIS picture is enriched with CPA/TCPA + dangerous flag before
+    // it is published, so every consumer (overlay red symbol, info panel, alarms) sees the same A.823
+    // close-quarters classification. Re-run whenever targets OR own-ship motion change (CPA depends on both).
+    private var rawTargets: List<TrackedTarget> = emptyList()
+    @Volatile private var dangerCriteria = DangerCriteria()
+
+    /** Operator-settable CPA/TCPA close-quarters limits; re-publishes the current picture immediately. */
+    fun setDangerCriteria(criteria: DangerCriteria) {
+        dangerCriteria = criteria
+        publishTargets(rawTargets)
+    }
+
+    private fun publishTargets(raw: List<TrackedTarget>) {
+        rawTargets = raw
+        _targets.value = DangerClassifier.evaluateAll(_ownShip.value, raw, dangerCriteria)
+    }
+
     // BAM alarm state machine — the single source of truth for alarm state. Inbound alerts (ALR/ALF)
     // are raised through it and inbound commands (ACN/ARC) drive its transitions, so a central alarm
     // panel can acknowledge/silence/transfer our alarms (IEC 62923-1 §6.3 / §6.9).
@@ -151,7 +170,7 @@ class CommsRouter(config: CommsConfig) {
                 _echoSpokes.tryEmit(spoke)
                 // Feed the tracker; once a full revolution completes it returns the radar-TT snapshot.
                 trackingPipeline.onSpoke(spoke, now, _ownShip.value)?.let { tracks ->
-                    _targets.value = targetAggregator.replaceRadarSnapshot(tracks)
+                    publishTargets(targetAggregator.replaceRadarSnapshot(tracks))
                 }
             }
         }
@@ -179,7 +198,7 @@ class CommsRouter(config: CommsConfig) {
     /** HALO tracked-target datagram (236.6.7.18): full radar-TT snapshot. */
     fun onHaloTarget(bytes: ByteArray, now: Long): List<LinkAction> {
         targetPkts++; targetLast = now
-        _targets.value = targetAggregator.replaceRadarSnapshot(targetParser.parseTargets(bytes))
+        publishTargets(targetAggregator.replaceRadarSnapshot(targetParser.parseTargets(bytes)))
         return supervisor.onPacket(DataChannel.TARGET, now)
     }
 
@@ -196,8 +215,11 @@ class CommsRouter(config: CommsConfig) {
 
     private fun routeSentence(raw: String, now: Long) {
         when (val parsed = iec61162.parse(raw)) {
-            is ParsedSentence.OwnShipUpdate -> _ownShip.value = ownShipFusion.merge(parsed.data)
-            is ParsedSentence.TargetUpdate -> _targets.value = targetAggregator.upsert(parsed.target)
+            is ParsedSentence.OwnShipUpdate -> {
+                _ownShip.value = ownShipFusion.merge(parsed.data)
+                publishTargets(rawTargets) // own-ship motion changed → recompute CPA/TCPA on the current picture
+            }
+            is ParsedSentence.TargetUpdate -> publishTargets(targetAggregator.upsert(parsed.target))
             // Inbound alert (ALR/ALF) → raise through the BAM state machine, emit the resulting event.
             is ParsedSentence.AlertUpdate -> emitAlarms(
                 alarmManager.raise(

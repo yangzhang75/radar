@@ -36,10 +36,11 @@ object DemoFeed {
         var spoke = 0
         var seq = 0
         var tick = 0L
+        var rev = 0
         while (true) {
             // 用墙钟做 now:链路时延 / BITE 年龄计算才正确(合成 tick 与 UI 墙钟不同域会算出天文数字)。
             val now = System.currentTimeMillis()
-            router.onHaloImage(spokePacket(spoke, seq), now = now)
+            router.onHaloImage(spokePacket(spoke, seq, rev), now = now)
             // 双量程: 同步喂 Radar B 一幅近距景象 (独立流, 见 onHaloImageB)。dual-range 画面展示用。
             router.onHaloImageB(spokePacketB(spoke, seq), now = now)
             // 状态通道 01C4 ~每2s 一帧(发射态),让 SIM 也走真状态解码(链路监视可见 STATUS 活跃)。
@@ -57,6 +58,7 @@ object DemoFeed {
                 )
             }
             spoke = (spoke + 1) % SPOKES_PER_REV
+            if (spoke == 0) rev++ // 整圈完成 → 驱动逼近目标每圈靠近
             seq = (seq + 1) and 0x0FFF
             tick += 6
             delay(6) // ~12 s/rev at 2048 spokes
@@ -65,13 +67,20 @@ object DemoFeed {
 
     // --- HALO image spoke: pack one spoke into the real 24-byte header + 4-bit samples ---------
 
-    private fun spokePacket(spokeIndex: Int, seq: Int): ByteArray {
+    private fun spokePacket(spokeIndex: Int, seq: Int, rev: Int): ByteArray {
         val azimuthDeg = 360.0 * spokeIndex / SPOKES_PER_REV
         val s = ByteArray(N) // 0 = no echo (clean dark background; no synthetic clutter)
         if (azimuthDeg in 30.0..85.0) for (i in frac(0.65)..frac(0.72)) s[i] = 14 // coastline arc
         if (abs(azimuthDeg - 135.0) < 1.5) for (i in frac(0.39)..frac(0.41)) s[i] = 15 // point target
         val doppler = abs(azimuthDeg - 210.0) < 1.0
         if (doppler) for (i in frac(0.54)..frac(0.56)) s[i] = 15 // approaching (Doppler)
+        // 逼近目标(演示碰撞预警):方位 300°(空旷,避开海岸弧/点目标/多普勒),距离随每圈递减
+        // → 正 TCPA、CPA 在安全限内 → 危险(变红)+ 3044 碰撞报警。30 圈一个周期从远(0.7)收到近(0.16)。
+        if (abs(azimuthDeg - 300.0) < 1.5) {
+            val closingFrac = (0.70 - (rev % 30) * 0.018).coerceIn(0.16, 0.70)
+            val c = frac(closingFrac)
+            for (i in maxOf(0, c - 1)..minOf(N - 1, c + 1)) s[i] = 15
+        }
 
         val enc = if (doppler) 1 else 0
         val azRaw = (4096.0 * spokeIndex / SPOKES_PER_REV).toInt() and 0x1FFF
