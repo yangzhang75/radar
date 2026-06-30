@@ -57,7 +57,6 @@ import com.shipradar.app.infopanel.RightInfoPanel
 import com.shipradar.app.input.rememberRadarInteractionState
 import com.shipradar.app.ppi.PpiConfig
 import com.shipradar.app.ppi.PpiSurface
-import com.shipradar.app.target.FakeTargets
 import com.shipradar.app.target.TargetOverlay
 import com.shipradar.comms.service.CommsConfig
 import com.shipradar.comms.service.CommsRouter
@@ -137,8 +136,9 @@ fun RadarScreen() {
     val spokes = if (live) (boundEngine?.echoSpokes ?: emptyFlow()) else router.echoSpokes
     val ownShipFlow = if (live) (boundEngine?.ownShip ?: liveOwnShip) else router.ownShip
     val ownShipState by ownShipFlow.collectAsState()
-    val targets = remember { MutableStateFlow(FakeTargets.mixedScene()) }
-    val targetsFlow = if (live) (boundEngine?.targets ?: liveTargets) else targets
+    // SIM/REPLAY 也走 router.targets:雷达 TT 由回波跟踪管线从 DemoFeed/录像回波提取,AIS 由 61162 解析,
+    // 二者在 router 内融合。LIVE 走绑定服务的 engine.targets。(此前 SIM 用静态 FakeTargets 占位,已废弃。)
+    val targetsFlow = if (live) (boundEngine?.targets ?: liveTargets) else router.targets
     val targetList by targetsFlow.collectAsState()
     val status by (if (live) (boundEngine?.radarStatus ?: liveStatus) else sim.status).collectAsState()
     val controller: RadarController = if (live) (boundEngine ?: sim) else sim
@@ -324,7 +324,7 @@ fun RadarScreen() {
                         }
                     }
                     TargetOverlay(
-                        targets = if (live) (boundEngine?.targets ?: liveTargets) else targets,
+                        targets = if (live) (boundEngine?.targets ?: liveTargets) else router.targets,
                         ownShip = ownShipFlow,
                         rangeScaleNm = display.rangeScaleNm,
                         orientation = display.orientation,              // targets follow the same orientation
