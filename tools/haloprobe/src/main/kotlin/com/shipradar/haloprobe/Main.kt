@@ -41,7 +41,15 @@ fun main(rawArgs: Array<String>) {
     // 离线模式:解码一份抓包文本(真雷达录像)→ 真 SpokeParser,验证"符合协议没"。
     val decodeFile = rawArgs.toList().zipWithNext().firstOrNull { it.first == "--decode-file" }?.second
         ?: rawArgs.firstOrNull { it.startsWith("--decode-file=") }?.substringAfter('=')
-    if (decodeFile != null) { decodeCapture(decodeFile); return }
+    if (decodeFile != null) {
+        val unitArg = rawArgs.firstOrNull { it.startsWith("--range-unit=") }?.substringAfter('=')?.lowercase()
+        val unit = when (unitArg) {
+            "dm" -> SpokeParser.RANGE_UNIT_DM
+            "cm" -> SpokeParser.RANGE_UNIT_CM
+            else -> SpokeParser.RANGE_UNIT_MM
+        }
+        decodeCapture(decodeFile, unit); return
+    }
 
     val args = ProbeArgs.parse(rawArgs)
     println("=== HALO 探针 (本机直连) ===")
@@ -141,11 +149,12 @@ private fun sleep(ms: Long) = runCatching { Thread.sleep(ms) }
  * 解码一份"文本 hex 抓包"(每包: `(UDP)src->dst ,N Bytes` + 整 IP 报文的两位十六进制),
  * 去 IP/UDP 头取 HALO 载荷 → 真 [SpokeParser] 解析,打印结果。用于对**真雷达字节**验证协议一致性。
  */
-private fun decodeCapture(path: String) {
+private fun decodeCapture(path: String, rangeUnitToMm: Int = SpokeParser.RANGE_UNIT_MM) {
     val text = java.io.File(path).readText(Charsets.ISO_8859_1)
     val blocks = text.split("(UDP)").drop(1)
     println("=== 离线解码: $path ===")
-    println("UDP 包数: ${blocks.size}")
+    val unitName = when (rangeUnitToMm) { SpokeParser.RANGE_UNIT_DM -> "dm(×100)"; SpokeParser.RANGE_UNIT_CM -> "cm(×10)"; else -> "mm(×1)" }
+    println("UDP 包数: ${blocks.size}  | rangeCellSize 单位假设: $unitName")
     var imgPk = 0; var spokesTotal = 0; var skippedTotal = 0
     val allSpokes = ArrayList<com.shipradar.contract.EchoSpoke>()
     val preamble = byteArrayOf(0x01, 0x00, 0x00, 0x00, 0x00, 0x20, 0x00, 0x02)
@@ -162,7 +171,7 @@ private fun decodeCapture(path: String) {
         println("    dst=$dst  载荷=${payload.size}B  首8=${payload.take(8).joinToString(" ") { "%02X".format(it) }}")
         println("    以 8字节帧头开头? ${payload.size >= 8 && payload.copyOfRange(0, 8).contentEquals(preamble)}")
         if (isImage) {
-            val r = SpokeParser.parseDetailed(payload)
+            val r = SpokeParser.parseDetailed(payload, rangeUnitToMm)
             imgPk++; spokesTotal += r.spokes.size; skippedTotal += r.skipped
             allSpokes.addAll(r.spokes)
             println("    SpokeParser → 解出 ${r.spokes.size} 辐条, 跳过 ${r.skipped}")

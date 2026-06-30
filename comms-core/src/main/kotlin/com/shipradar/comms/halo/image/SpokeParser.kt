@@ -55,8 +55,19 @@ object SpokeParser {
      */
     data class Result(val spokes: List<EchoSpoke>, val skipped: Int)
 
+    /**
+     * `rangeCellSize` 字段→毫米 的换算系数。文档/SDK 标注该字段为毫米(默认 1),但真雷达抓包给出的值
+     * (如 128)按毫米解得满量程仅 ~78m,对海用雷达过小;疑似单位为**分米(dm,×100)**或 cm(×10)
+     * —— 见 haloprobe 真数据验证 + 协议歧义清单。待厂商确认前默认保持 mm(1),不污染合成/单测路径;
+     * 真机/离线验证可显式传 [RANGE_UNIT_DM] / [RANGE_UNIT_CM]。
+     */
+    const val RANGE_UNIT_MM = 1
+    const val RANGE_UNIT_CM = 10
+    const val RANGE_UNIT_DM = 100
+
     /** 主入口：返回解析出的辐条列表（丢弃静默忽略）。需要丢弃计数时用 [parseDetailed]。 */
-    fun parse(packet: ByteArray): List<EchoSpoke> = parseDetailed(packet).spokes
+    fun parse(packet: ByteArray, rangeUnitToMm: Int = RANGE_UNIT_MM): List<EchoSpoke> =
+        parseDetailed(packet, rangeUnitToMm).spokes
 
     /**
      * 解析一个 UDP 包中的全部辐条。
@@ -67,7 +78,7 @@ object SpokeParser {
      *    **停止解析该包余下部分** 并 skipped+1（截断包的典型表现）。
      *  - bitsPerSample 非 4 → 该辐条跳过、skipped+1，但 spokeLength 可信，故继续扫描后续辐条。
      */
-    fun parseDetailed(packet: ByteArray): Result {
+    fun parseDetailed(packet: ByteArray, rangeUnitToMm: Int = RANGE_UNIT_MM): Result {
         val spokes = ArrayList<EchoSpoke>()
         var skipped = 0
         var off = 0
@@ -102,7 +113,7 @@ object SpokeParser {
 
             val nOfSamples = bits(w1, 0, 12)
             val bitsPerSample = bits(w1, 12, 4)
-            val rangeCellSizeMm = bits(w1, 16, 16)
+            val rangeCellSizeMm = bits(w1, 16, 16) * rangeUnitToMm
 
             val spokeAzimuth = bits(w2, 0, 13)
             val bearingZeroError = bits(w2, 14, 1) == 1

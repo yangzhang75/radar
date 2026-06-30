@@ -117,6 +117,18 @@ class SpokeParserTest {
 
     // ---- 4-bit 解包：低索引 = 低半字节 ----
 
+    @Test fun range_unit_scales_cell_size_to_mm() {
+        // rangeCellSize 字段=128, cellsDiv2=304, 1024 采样。默认 mm → 满量程 ~78m(过小);
+        // dm(×100)→ 12800mm/cell, 满量程 ~7782m(合理)。验证可配置换算。
+        val pkt = buildSpoke(IntArray(1024) { 0 }, rangeCellSizeMm = 128, rangeCellsDiv2 = 304)
+        val mm = SpokeParser.parse(pkt).first()
+        assertEquals(128, mm.rangeCellSizeMm)
+        assertTrue(mm.rangeMetersFull < 100.0, "mm 解读满量程过小: ${mm.rangeMetersFull}")
+        val dm = SpokeParser.parse(pkt, SpokeParser.RANGE_UNIT_DM).first()
+        assertEquals(12800, dm.rangeCellSizeMm)
+        assertTrue(dm.rangeMetersFull in 7000.0..8500.0, "dm 解读满量程应~7.8km: ${dm.rangeMetersFull}")
+    }
+
     @Test fun unpacks_4bit_low_index_is_low_nibble() {
         // 两个字节 -> 4 个采样。byte0=0x21 -> sample0=1, sample1=2; byte1=0xF8 -> sample2=8, sample3=15
         val samples = intArrayOf(1, 2, 8, 15)
