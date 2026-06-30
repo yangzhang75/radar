@@ -7,11 +7,13 @@ import com.shipradar.comms.sync.LinkAction
 import com.shipradar.contract.AlarmEvent
 import com.shipradar.contract.AlarmState
 import com.shipradar.contract.LinkState
+import com.shipradar.contract.TargetSource
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
@@ -90,6 +92,21 @@ class CommsRouterTest {
         val src = "s:RA0001" // conformant 61162-450 source id (talker + 4 digits)
         val line = "\\$src*${"%02X".format(xor(src))}\\" + "\$$body*${"%02X".format(xor(body))}" + "\r\n"
         return "UdPbC".toByteArray(Charsets.ISO_8859_1) + byteArrayOf(0) + line.toByteArray(Charsets.ISO_8859_1)
+    }
+
+    @Test
+    fun `published targets are enriched with CPA-TCPA and a head-on closing target is flagged dangerous`() {
+        val r = CommsRouter(cfg)
+        // own ship steaming due north at 10 kn
+        r.on450(Iec450Group.NAVD, frame450("GPRMC,123519,A,3017.76,N,12210.08,E,10.0,000.0,300625,,"), now = 1_000)
+        // a tracked target 1 NM dead ahead (true bearing 000) closing head-on (course 180, 10 kn);
+        // the TTM carries NO CPA/TCPA field — the router must compute them from the geometry.
+        r.on450(Iec450Group.TGTD, frame450("RATTM,01,1.0,000.0,T,10.0,180.0,T,,,N,,T,,"), now = 2_000)
+
+        val t = r.targets.value.firstOrNull { it.source == TargetSource.RADAR_TT }
+        assertNotNull(t, "radar TT must be published")
+        assertNotNull(t.cpaNm, "router must enrich the target with a computed CPA (absent in the sentence)")
+        assertTrue(t.dangerous, "a 1 NM head-on closing target must be classified dangerous (drives 3044)")
     }
 
     @Test
