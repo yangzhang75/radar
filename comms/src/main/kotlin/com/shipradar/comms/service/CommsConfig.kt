@@ -1,6 +1,7 @@
 package com.shipradar.comms.service
 
 import com.shipradar.comms.halo.handshake.WatchdogPolicy
+import com.shipradar.comms.halo.image.SpokeParser
 import com.shipradar.comms.iec450.Iec450Group
 import com.shipradar.comms.sync.Backoff
 import com.shipradar.comms.sync.ChannelConfig
@@ -41,6 +42,12 @@ data class CommsConfig(
     val echoBufferCapacity: Int = 4096,
     val profile: DataInterfaceProfile = DataInterfaceProfile.ACTUAL,
     val endpoints: HaloEndpointSet = HaloEndpointSet.actual(),
+    /**
+     * HALO `rangeCellSize` field → millimetres conversion (default [SpokeParser.RANGE_UNIT_MM]). Real
+     * captures suggest the field is decimetres ([SpokeParser.RANGE_UNIT_DM]); kept at mm until the vendor
+     * confirms (see SpokeParser / haloprobe real-data finding). Applied to the live HALO image path.
+     */
+    val rangeUnitToMm: Int = SpokeParser.RANGE_UNIT_MM,
 ) {
     companion object {
         /** 实际雷达数据接口(法定 236.6.7.x 端口)。 */

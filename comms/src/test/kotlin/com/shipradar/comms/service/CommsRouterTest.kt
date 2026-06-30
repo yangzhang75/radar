@@ -109,6 +109,51 @@ class CommsRouterTest {
         assertTrue(t.dangerous, "a 1 NM head-on closing target must be classified dangerous (drives 3044)")
     }
 
+    /** Minimal HALO image datagram: 8-byte preamble + one 24-byte spoke header + 4 zero samples. */
+    private fun imagePacket(rangeCellSize: Int, cellsDiv2: Int): ByteArray {
+        fun le(v: Long) = ByteArray(4) { ((v ushr (it * 8)) and 0xFF).toByte() }
+        val pre = byteArrayOf(0x01, 0, 0, 0, 0, 0x20, 0, 0x02)
+        val n = 4
+        val data = ByteArray(n / 2) // 4 samples, 4-bit packed → 2 bytes, all zero
+        val w0 = (24 + data.size).toLong() or (1L shl 16)                 // spokeLength | seq=1
+        val w1 = n.toLong() or (4L shl 12) or (rangeCellSize.toLong() shl 16) // nSamples | 4bit | rangeCellSize
+        val w3 = cellsDiv2.toLong()
+        return pre + le(w0) + le(w1) + le(0) + le(w3) + le(0) + le(0) + data
+    }
+
+    @Test
+    fun `live range-unit config scales echo full range (mm default vs dm)`() = runTest {
+        // default mm: rangeCellSize 128 → tiny full range (~78 m)
+        val rMm = CommsRouter(cfg)
+        val mm = mutableListOf<com.shipradar.contract.EchoSpoke>()
+        backgroundScope.launch { rMm.echoSpokes.collect { mm += it } }
+        runCurrent()
+        rMm.onHaloImage(imagePacket(rangeCellSize = 128, cellsDiv2 = 304), now = 1_000)
+        runCurrent()
+        assertTrue(mm.isNotEmpty() && mm.first().rangeMetersFull < 100.0, "mm: ${mm.firstOrNull()?.rangeMetersFull}")
+
+        // dm config: ×100 → realistic ~7.8 km full range
+        val rDm = CommsRouter(cfg.copy(rangeUnitToMm = com.shipradar.comms.halo.image.SpokeParser.RANGE_UNIT_DM))
+        val dm = mutableListOf<com.shipradar.contract.EchoSpoke>()
+        backgroundScope.launch { rDm.echoSpokes.collect { dm += it } }
+        runCurrent()
+        rDm.onHaloImage(imagePacket(rangeCellSize = 128, cellsDiv2 = 304), now = 1_000)
+        runCurrent()
+        assertTrue(dm.isNotEmpty() && dm.first().rangeMetersFull in 7000.0..8500.0, "dm: ${dm.firstOrNull()?.rangeMetersFull}")
+    }
+
+    @Test
+    fun `a newly tracked radar target raises a 3048 new-target alarm`() = runTest {
+        val r = CommsRouter(cfg)
+        val events = mutableListOf<AlarmEvent>()
+        backgroundScope.launch { r.alarms.collect { events += it } }
+        runCurrent()
+        // a TTM tracked target (status T) → confirmed radar-TT appears → 3048 new-target.
+        r.on450(Iec450Group.TGTD, frame450("RATTM,01,1.0,000.0,T,10.0,180.0,T,,,N,,T,,"), now = 1_000)
+        runCurrent()
+        assertTrue(events.any { it.identifier == 3048 }, "expected a 3048 new-target alarm, got $events")
+    }
+
     @Test
     fun `tick schedules reconnect for a lost channel`() {
         val r = CommsRouter(cfg)

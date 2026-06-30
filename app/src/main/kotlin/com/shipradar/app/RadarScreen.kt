@@ -3,6 +3,7 @@ package com.shipradar.app
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -184,7 +185,17 @@ fun RadarScreen() {
             }
         }
     }
-    val alarms = AlarmPresentation.uiStateOf(alarmEvents)
+    // 事件型报警(新/丢目标 3048/3052,及入站 ALR)由 router/engine 的 BAM 状态机经 alarms 流推送;
+    // 收集最近若干条与上面的状态型报警(碰撞/警戒圈)合并显示。SIM 走 router,LIVE 走绑定服务。
+    val alarmsFlow = if (live) (boundEngine?.alarms ?: emptyFlow()) else router.alarms
+    val flowAlarms = remember { mutableStateListOf<AlarmEvent>() }
+    LaunchedEffect(alarmsFlow) {
+        alarmsFlow.collect { ev ->
+            flowAlarms.add(ev)
+            while (flowAlarms.size > 10) flowAlarms.removeAt(0)
+        }
+    }
+    val alarms = AlarmPresentation.uiStateOf(alarmEvents + flowAlarms)
     // 偏心显示(O 键):归一化偏移,驱动 PPI 投影 + 各叠加层同一本船中心。
     var showView by remember { mutableStateOf(false) }
     val viewCtl = rememberViewControlState()

@@ -10,6 +10,7 @@ import com.shipradar.comms.iec450.Iec450FrameParser
 import com.shipradar.comms.iec450.Iec450Group
 import com.shipradar.comms.alarm.AlarmCommand
 import com.shipradar.comms.alarm.AlarmIntent
+import com.shipradar.comms.alarm.AlertCatalog
 import com.shipradar.comms.alarm.BamAlarmManager
 import com.shipradar.comms.iec61162.AlertCommand
 import com.shipradar.comms.iec61162.AlertCommandKind
@@ -33,7 +34,10 @@ import com.shipradar.uicore.target.DangerCriteria
 import com.shipradar.uicore.target.RadarTrackingPipeline
 import com.shipradar.contract.RadarPowerState
 import com.shipradar.contract.RadarStatus
+import com.shipradar.contract.TargetSource
+import com.shipradar.contract.TargetStatus
 import com.shipradar.contract.TrackedTarget
+import com.shipradar.uicore.target.TargetLifecycle
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -115,11 +119,18 @@ class CommsRouter(config: CommsConfig) {
     // radar also pushes TT packets via onHaloTarget, that snapshot path takes over instead.
     private val trackingPipeline = RadarTrackingPipeline()
 
+    /** HALO rangeCellSize→mm 换算(默认 mm;真机待确认可设 dm)。见 [CommsConfig.rangeUnitToMm]。 */
+    private val rangeUnitToMm = config.rangeUnitToMm
+
     // Collision assessment: the merged radar+AIS picture is enriched with CPA/TCPA + dangerous flag before
     // it is published, so every consumer (overlay red symbol, info panel, alarms) sees the same A.823
     // close-quarters classification. Re-run whenever targets OR own-ship motion change (CPA depends on both).
     private var rawTargets: List<TrackedTarget> = emptyList()
     @Volatile private var dangerCriteria = DangerCriteria()
+
+    // New-target (3048) / lost-target (3052) edge detection over the confirmed radar-TT id set.
+    private val radarLifecycle = TargetLifecycle()
+    @Volatile private var lastNow = 0L
 
     /** Operator-settable CPA/TCPA close-quarters limits; re-publishes the current picture immediately. */
     fun setDangerCriteria(criteria: DangerCriteria) {
@@ -129,7 +140,19 @@ class CommsRouter(config: CommsConfig) {
 
     private fun publishTargets(raw: List<TrackedTarget>) {
         rawTargets = raw
-        _targets.value = DangerClassifier.evaluateAll(_ownShip.value, raw, dangerCriteria)
+        val enriched = DangerClassifier.evaluateAll(_ownShip.value, raw, dangerCriteria)
+        _targets.value = enriched
+        // A.823 §3.3.2 — raise new-target (3048) / lost-target (3052) on the confirmed radar-TT set.
+        val radarIds = enriched.asSequence()
+            .filter { it.source == TargetSource.RADAR_TT && it.status == TargetStatus.TRACKED }
+            .map { it.id }.toSet()
+        val changes = radarLifecycle.update(radarIds)
+        for (id in changes.appeared) {
+            emitAlarms(alarmManager.raise(AlertCatalog.ID_NEW_TARGET, nowMillis = lastNow, text = "New target $id", source = "RADAR"))
+        }
+        for (id in changes.disappeared) {
+            emitAlarms(alarmManager.raise(AlertCatalog.ID_LOST_TARGET, nowMillis = lastNow, text = "Lost target $id", source = "RADAR"))
+        }
     }
 
     // BAM alarm state machine — the single source of truth for alarm state. Inbound alerts (ALR/ALF)
@@ -167,8 +190,8 @@ class CommsRouter(config: CommsConfig) {
 
     /** HALO echo image datagram (236.6.7.8). Returns liveness actions for the engine to execute. */
     fun onHaloImage(bytes: ByteArray, now: Long): List<LinkAction> {
-        echoPkts++; echoLast = now
-        for (spoke in spokeParser.parse(bytes)) {
+        lastNow = now; echoPkts++; echoLast = now
+        for (spoke in spokeParser.parse(bytes, rangeUnitToMm)) {
             // Drop retransmit duplicates; everything else (in-order / gap / reordered) reaches the renderer.
             if (seqTracker.observe(spoke.sequenceNumber) != SeqClass.DUPLICATE) {
                 _echoSpokes.tryEmit(spoke)
@@ -183,8 +206,8 @@ class CommsRouter(config: CommsConfig) {
 
     /** HALO Radar-B echo image datagram (双量程, 236.6.7.13). Parsed identically into the B flow. */
     fun onHaloImageB(bytes: ByteArray, now: Long): List<LinkAction> {
-        echoBPkts++; echoBLast = now
-        for (spoke in spokeParser.parse(bytes)) {
+        lastNow = now; echoBPkts++; echoBLast = now
+        for (spoke in spokeParser.parse(bytes, rangeUnitToMm)) {
             if (seqTrackerB.observe(spoke.sequenceNumber) != SeqClass.DUPLICATE) {
                 _echoSpokesB.tryEmit(spoke)
             }
@@ -194,14 +217,14 @@ class CommsRouter(config: CommsConfig) {
 
     /** HALO status datagram (236.6.7.9): merge onto the running status snapshot. */
     fun onHaloStatus(bytes: ByteArray, now: Long): List<LinkAction> {
-        statusPkts++; statusLast = now
+        lastNow = now; statusPkts++; statusLast = now
         _radarStatus.value = statusParser.parseStatus(bytes).applyTo(_radarStatus.value)
         return supervisor.onPacket(DataChannel.STATUS, now)
     }
 
     /** HALO tracked-target datagram (236.6.7.18): full radar-TT snapshot. */
     fun onHaloTarget(bytes: ByteArray, now: Long): List<LinkAction> {
-        targetPkts++; targetLast = now
+        lastNow = now; targetPkts++; targetLast = now
         publishTargets(targetAggregator.replaceRadarSnapshot(targetParser.parseTargets(bytes)))
         return supervisor.onPacket(DataChannel.TARGET, now)
     }
@@ -210,7 +233,7 @@ class CommsRouter(config: CommsConfig) {
 
     /** A 61162-450 datagram received on [group]. Extracts sentences and routes each. */
     fun on450(group: Iec450Group, bytes: ByteArray, now: Long): List<LinkAction> {
-        iec450Pkts++; iec450Last = now
+        lastNow = now; iec450Pkts++; iec450Last = now
         val result = iec450.parse(bytes, group)
         discardCounters += result.discards
         for (ts in result.sentences) routeSentence(ts.rawSentence, now)
@@ -288,7 +311,7 @@ class CommsRouter(config: CommsConfig) {
     // ------------------------------------------------------------------ liveness / link state
 
     /** Advance the liveness tick; returns the supervisor's actions for the engine to execute. */
-    fun onTick(now: Long): List<LinkAction> = supervisor.onTick(now)
+    fun onTick(now: Long): List<LinkAction> { lastNow = now; return supervisor.onTick(now) }
 
     /** Feed a handshake/recovery event into the combined contract [LinkState]. */
     fun applyLinkEvent(event: LinkEvent) {
