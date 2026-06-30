@@ -147,6 +147,7 @@ private fun decodeCapture(path: String) {
     println("=== 离线解码: $path ===")
     println("UDP 包数: ${blocks.size}")
     var imgPk = 0; var spokesTotal = 0; var skippedTotal = 0
+    val allSpokes = ArrayList<com.shipradar.contract.EchoSpoke>()
     val preamble = byteArrayOf(0x01, 0x00, 0x00, 0x00, 0x00, 0x20, 0x00, 0x02)
     for ((i, blk) in blocks.withIndex()) {
         val header = blk.substringBefore('\n').trim()
@@ -163,8 +164,9 @@ private fun decodeCapture(path: String) {
         if (isImage) {
             val r = SpokeParser.parseDetailed(payload)
             imgPk++; spokesTotal += r.spokes.size; skippedTotal += r.skipped
+            allSpokes.addAll(r.spokes)
             println("    SpokeParser → 解出 ${r.spokes.size} 辐条, 跳过 ${r.skipped}")
-            r.spokes.firstOrNull()?.let { println("    首辐条: 方位=%.2f° 采样=${it.samples.size} seq=${it.sequenceNumber} 编码=${it.encoding}".format(it.azimuthDeg)) }
+            r.spokes.firstOrNull()?.let { println("    首辐条: 方位=%.2f° 采样=${it.samples.size} seq=${it.sequenceNumber} 编码=${it.encoding} | rangeCellSize=${it.rangeCellSizeMm}mm cellsDiv2=${it.rangeCellsDiv2} 满量程=%.0fm".format(it.azimuthDeg, it.rangeMetersFull)) }
             r.spokes.lastOrNull()?.let { println("    末辐条: 方位=%.2f° 采样=${it.samples.size}".format(it.azimuthDeg)) }
             val nonZero = r.spokes.sumOf { s -> s.samples.count { it.toInt() != 0 } }
             println("    非零采样总数: $nonZero (有回波)")
@@ -172,6 +174,26 @@ private fun decodeCapture(path: String) {
     }
     println("\n=== 汇总: 图像包 $imgPk, 共解出 $spokesTotal 辐条, 跳过 $skippedTotal ===")
     if (spokesTotal > 0 && skippedTotal == 0) println("✅ 真雷达图像数据 100% 解析通过 —— 协议一致性验证成功")
+
+    // step1 点迹提取跑真实回波(目标从真实雷达图像里抓出来)。
+    if (allSpokes.isNotEmpty()) {
+        val az = allSpokes.map { it.azimuthDeg }
+        val span = (az.maxOrNull()!! - az.minOrNull()!!)
+        val plots = com.shipradar.uicore.target.PlotExtractor.extract(allSpokes)
+        println("\n=== 跟踪管线 step1(点迹提取)跑真实回波 ===")
+        println("输入: ${allSpokes.size} 辐条, 方位跨度 %.1f°".format(span))
+        println("提取点迹: ${plots.size}")
+        plots.take(12).forEach {
+            println("  ${it.id}: 距离=%.3f NM  方位=%.1f°  峰值=${it.amplitudePeak?.toInt()}  单元=${it.cellCount}"
+                .format(it.rangeNm, it.trueBearingDeg))
+        }
+        val full = allSpokes.first().rangeMetersFull
+        println("注:本抓包约 %.0f° 扇区(<1 圈),足以验证点迹提取+方位;完整跟踪(step2/3)需多圈真实数据。".format(span))
+        if (full < 500.0) {
+            println("⚠ 满量程仅 %.0fm —— 距离偏小,疑似 rangeCellSize 单位为分米(dm)而非毫米(mm)。".format(full))
+            println("  检测/方位链路正确(点迹落在扫描扇区内);绝对距离标定待厂商确认量程单位(见协议歧义清单)。")
+        }
+    }
 }
 
 // ----------------------------------------------------------------- 握手
