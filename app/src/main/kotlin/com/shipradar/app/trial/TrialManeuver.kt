@@ -7,6 +7,7 @@ import com.shipradar.uicore.target.CpaTcpaCalculator
 import com.shipradar.uicore.target.DangerCriteria
 import com.shipradar.uicore.target.Geometry
 import com.shipradar.uicore.target.InstantTrialManeuverSimulator
+import com.shipradar.uicore.target.TrialManeuverSimulator
 import com.shipradar.uicore.target.TrialManeuverRequest
 import com.shipradar.uicore.target.Vec2
 
@@ -86,19 +87,20 @@ data class TrialComparisonRow(
 /** 试操评估器:对全部目标重算试操后 CPA/TCPA/相对矢量,并与当前实测值并排。 */
 object TrialManeuverEvaluator {
 
-    private val simulator = InstantTrialManeuverSimulator()
-
     /**
      * 对 [targets] 评估 [params] 试操方案。返回每个**可解算**目标(方位/航向/航速齐全)的对比行;
      * 无法解算 CPA 的目标(同 [InstantTrialManeuverSimulator] 的 mapNotNull 语义)被剔除。
      *
      * @param criteria 操作员 CPA/TCPA 安全门限(A.823 §3.5.2,无标准强制默认值)。
+     * @param simulator 试操模型:默认瞬时机动(§3.7 强制部分);传
+     *   [com.shipradar.uicore.target.CurvedTrialManeuverSimulator] 可启用含本船操纵特性的曲线预测(§3.7.2 可选)。
      */
     fun evaluate(
         ownShip: OwnShipData,
         targets: List<TrackedTarget>,
         params: TrialManeuverParams,
         criteria: DangerCriteria = DangerCriteria(),
+        simulator: TrialManeuverSimulator = InstantTrialManeuverSimulator(),
     ): List<TrialComparisonRow> {
         val request = TrialManeuverRequest(
             newCourseDeg = params.trialCourseDeg,
