@@ -96,11 +96,12 @@ object TargetFusion {
         ais: TrackedTarget,
         ownShip: OwnShipData,
         gate: AssociationGate,
+        positionLimitNm: Double,
     ): TargetAssociation? {
         val rp = Geometry.relativePosition(radar, ownShip) ?: return null
         val ap = Geometry.relativePosition(ais, ownShip) ?: return null
         val sep = (rp - ap).norm()
-        if (sep > gate.positionNm) return null
+        if (sep > positionLimitNm) return null
 
         // Motion gate: only applied when both carry course/speed. AIS always reports COG/SOG; a radar TT
         // mid-acquisition may not yet have a course, in which case position alone gates (§5.30 leaves the
@@ -130,6 +131,7 @@ object TargetFusion {
         ownShip: OwnShipData,
         gate: AssociationGate = AssociationGate(),
         priority: FusionPriority = FusionPriority.AIS,
+        retained: Set<Pair<String, String>> = emptySet(),
     ): FusionResult {
         val radars = targets.filter { it.source == TargetSource.RADAR_TT }
         val aisTargets = targets.filter { isAis(it.source) }
@@ -140,12 +142,15 @@ object TargetFusion {
         val droppedAis = HashSet<String>()
 
         for (radar in radars) {
-            // nearest eligible, unused AIS target
+            // nearest eligible, unused AIS target. A pair associated last frame ([retained]) keeps a WIDER
+            // position gate (positionNm × hysteresis) before it is allowed to split — IEC 62388 §11.8.2
+            // hysteresis, so a pair straddling the gate boundary doesn't flicker between one/two symbols.
             var best: TargetAssociation? = null
             var bestAis: TrackedTarget? = null
             for (ais in aisTargets) {
                 if (ais.id in usedAis) continue
-                val m = matches(radar, ais, ownShip, gate) ?: continue
+                val limit = if ((radar.id to ais.id) in retained) gate.positionNm * gate.hysteresis else gate.positionNm
+                val m = matches(radar, ais, ownShip, gate, limit) ?: continue
                 if (best == null || m.separationNm < best.separationNm) {
                     best = m; bestAis = ais
                 }
@@ -170,4 +175,27 @@ object TargetFusion {
         }
         return FusionResult(fused, associations)
     }
+}
+
+/**
+ * Stateful frame-to-frame wrapper around [TargetFusion] that applies IEC 62388 §11.8.2 **hysteresis**:
+ * a radar↔AIS pair associated on the previous frame is held together under the wider disassociation gate
+ * (positionNm × hysteresis) until it clearly separates, so the display does not flicker between one and
+ * two symbols for a pair sitting on the association-gate boundary (§11.8.2 scenarios 1 & 2).
+ */
+class AssociationTracker {
+    private var retained: Set<Pair<String, String>> = emptySet()
+
+    fun fuse(
+        targets: List<TrackedTarget>,
+        ownShip: OwnShipData,
+        gate: AssociationGate = AssociationGate(),
+        priority: FusionPriority = FusionPriority.AIS,
+    ): FusionResult {
+        val result = TargetFusion.fuse(targets, ownShip, gate, priority, retained)
+        retained = result.associations.map { it.radarId to it.aisId }.toSet()
+        return result
+    }
+
+    fun reset() { retained = emptySet() }
 }

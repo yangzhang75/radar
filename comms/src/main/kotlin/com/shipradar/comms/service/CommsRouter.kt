@@ -31,13 +31,13 @@ import com.shipradar.contract.LinkState
 import com.shipradar.contract.ConningData
 import com.shipradar.contract.OwnShipData
 import com.shipradar.uicore.target.AisTargetBuilder
+import com.shipradar.uicore.target.AssociationTracker
 import com.shipradar.uicore.target.CapacityMonitor
 import com.shipradar.uicore.target.ClutterControl
 import com.shipradar.uicore.target.DangerClassifier
 import com.shipradar.uicore.target.DangerCriteria
 import com.shipradar.uicore.target.EquipmentCategory
 import com.shipradar.uicore.target.PlotExtractionConfig
-import com.shipradar.uicore.target.TargetFusion
 import com.shipradar.uicore.target.RadarTrackingPipeline
 import com.shipradar.contract.RadarPowerState
 import com.shipradar.contract.RadarStatus
@@ -142,6 +142,9 @@ class CommsRouter(config: CommsConfig) {
     private val aisStatic = HashMap<Long, ParsedSentence.AisStaticReport>()
     private val aisReassembler = AisReassembler()
 
+    // Stateful radar↔AIS fusion with §11.8.2 hysteresis (holds associated pairs across frames).
+    private val associationTracker = AssociationTracker()
+
     // New-target (3048) / lost-target (3052) edge detection over the confirmed radar-TT id set.
     private val radarLifecycle = TargetLifecycle()
     @Volatile private var lastNow = 0L
@@ -160,7 +163,8 @@ class CommsRouter(config: CommsConfig) {
     private fun publishTargets(raw: List<TrackedTarget>) {
         rawTargets = raw
         // §5.30 de-dup: collapse associated radar-TT ↔ AIS pairs into one symbol before publishing.
-        val fused = TargetFusion.fuse(raw, _ownShip.value).fused
+        // Stateful tracker applies §11.8.2 hysteresis so an associated pair doesn't flicker at the gate edge.
+        val fused = associationTracker.fuse(raw, _ownShip.value).fused
         val enriched = DangerClassifier.evaluateAll(_ownShip.value, fused, dangerCriteria)
         _targets.value = enriched
         // A.823 §3.3.2 — raise new-target (3048) / lost-target (3052) on the confirmed radar-TT set.
