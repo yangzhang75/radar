@@ -12,6 +12,7 @@ import com.shipradar.comms.alarm.AlarmCommand
 import com.shipradar.comms.alarm.AlarmIntent
 import com.shipradar.comms.alarm.AlertCatalog
 import com.shipradar.comms.alarm.BamAlarmManager
+import com.shipradar.comms.iec61162.AisReassembler
 import com.shipradar.comms.iec61162.AlertCommand
 import com.shipradar.comms.iec61162.AlertCommandKind
 import com.shipradar.comms.iec61162.Iec61162Parser
@@ -136,6 +137,10 @@ class CommsRouter(config: CommsConfig) {
     // close-quarters classification. Re-run whenever targets OR own-ship motion change (CPA depends on both).
     private var rawTargets: List<TrackedTarget> = emptyList()
     @Volatile private var dangerCriteria = DangerCriteria()
+
+    // AIS static/voyage (Msg 5/24) remembered by MMSI, applied as name/callsign/type labels to AIS targets.
+    private val aisStatic = HashMap<Long, ParsedSentence.AisStaticReport>()
+    private val aisReassembler = AisReassembler()
 
     // New-target (3048) / lost-target (3052) edge detection over the confirmed radar-TT id set.
     private val radarLifecycle = TargetLifecycle()
@@ -289,7 +294,11 @@ class CommsRouter(config: CommsConfig) {
     }
 
     private fun routeSentence(raw: String, now: Long) {
-        when (val parsed = iec61162.parse(raw)) {
+        // AIS VDM/VDO may be multi-fragment (e.g. Message 5 static = 2 fragments); reassemble + decode the
+        // joined payload directly (a reassembled Msg 5 exceeds the 82-char sentence limit, so we can't
+        // rebuild one sentence). Non-AIS and single fragments parse normally; incomplete/dropped → skip.
+        val parsed = parseWithAisReassembly(raw) ?: return
+        when (parsed) {
             is ParsedSentence.OwnShipUpdate -> {
                 _ownShip.value = ownShipFusion.merge(parsed.data)
                 publishTargets(rawTargets) // own-ship motion changed → recompute CPA/TCPA on the current picture
@@ -319,11 +328,26 @@ class CommsRouter(config: CommsConfig) {
             // can't be georeferenced yet (no own-ship fix).
             is ParsedSentence.AisPositionReport -> {
                 val own = _ownShip.value
+                val st = aisStatic[parsed.mmsi]
                 val t = AisTargetBuilder.build(
                     mmsi = parsed.mmsi, targetLat = parsed.latitude, targetLon = parsed.longitude,
                     cogDeg = parsed.cogDeg, sogKn = parsed.sogKn, ownLat = own.latitude, ownLon = own.longitude,
+                    name = st?.name, callsign = st?.callsign, shipType = st?.shipType,
                 )
                 if (t != null) publishTargets(targetAggregator.upsert(t)) else aisDeferred++
+            }
+            // AIS static/voyage (Msg 5/24): remember by MMSI and label an existing target if already present.
+            is ParsedSentence.AisStaticReport -> {
+                val prev = aisStatic[parsed.mmsi]
+                aisStatic[parsed.mmsi] = ParsedSentence.AisStaticReport(
+                    parsed.talker, parsed.formatter, parsed.mmsi,
+                    name = parsed.name ?: prev?.name, callsign = parsed.callsign ?: prev?.callsign,
+                    shipType = parsed.shipType ?: prev?.shipType, imo = parsed.imo ?: prev?.imo,
+                )
+                val merged = aisStatic.getValue(parsed.mmsi)
+                targetAggregator.snapshot().firstOrNull { it.id == "AIS-${parsed.mmsi}" }?.let { existing ->
+                    publishTargets(targetAggregator.upsert(existing.copy(name = merged.name, callsign = merged.callsign, shipType = merged.shipType)))
+                }
             }
             // W5-A secondary sentences not yet wired to the bus — TODO(T1.x), tracked in 认证缺口清单 D-class.
             is ParsedSentence.TargetGeoUpdate -> aisDeferred++   // TLL geo-only; needs own-ship/geometry fusion (T1.6)
@@ -334,6 +358,30 @@ class CommsRouter(config: CommsConfig) {
             is ParsedSentence.Unsupported -> {}
             null -> {}
         }
+    }
+
+    /**
+     * Reassemble a multi-fragment AIS VDM/VDO into a single-fragment sentence (payload joined) ready to
+     * parse; pass non-AIS and already-complete sentences straight through. Returns null while fragments
+     * are still missing or a fragment is dropped.
+     */
+    private fun parseWithAisReassembly(raw: String): ParsedSentence? {
+        val s = raw.trim()
+        val start = s.firstOrNull()
+        if (start == '!' || start == '$') {
+            val addr = s.drop(1).substringBefore(',')       // e.g. "AIVDM" = talker+formatter
+            if (addr.endsWith("VDM") || addr.endsWith("VDO")) {
+                return when (val r = aisReassembler.feed(raw)) {
+                    is AisReassembler.Result.Complete -> {
+                        val talker = addr.dropLast(3)        // "AI"
+                        val formatter = addr.takeLast(3)     // "VDM" / "VDO"
+                        iec61162.parseAisPayload(talker, formatter, r.payload, r.fillBits, ownVessel = formatter == "VDO")
+                    }
+                    else -> null // incomplete or dropped fragment — nothing to route yet
+                }
+            }
+        }
+        return iec61162.parse(raw)
     }
 
     /** Emit the UI-facing [AlarmEvent]s carried by the manager's intents (ReportAlf/ReportAlc). */

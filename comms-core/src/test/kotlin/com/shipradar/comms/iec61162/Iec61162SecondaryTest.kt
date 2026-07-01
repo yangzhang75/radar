@@ -64,6 +64,18 @@ class Iec61162SecondaryTest {
         assertEquals(mapOf("1" to "TARGET1", "2" to "TGT2"), r.labels)
     }
 
+    // ---- AIS static (Message 5) ---------------------------------------------------------------
+
+    @Test fun ais_message5_static_decodes_name_callsign_type() {
+        // A reassembled Message 5 payload (EVER GIVEN / ABCD123 / ship type 70), fill 2 — decoded directly
+        // via parseAisPayload (a reassembled Msg 5 exceeds the 82-char single-sentence limit).
+        val payload = "569?UCP0000048<C7;<EHE:0LUHDp000000000160000000Ht0000000000000000000008"
+        val r = parser.parseAisPayload("AI", "VDM", payload, 2, ownVessel = false) as ParsedSentence.AisStaticReport
+        assertEquals("EVER GIVEN", r.name)
+        assertEquals("ABCD123", r.callsign)
+        assertEquals(70, r.shipType)
+    }
+
     // ---- Conning / engine (RSA / RPM / DPT / DBT) ---------------------------------------------
 
     @Test fun rsa_single_rudder_angle() {

@@ -193,6 +193,24 @@ class CommsRouterTest {
     }
 
     @Test
+    fun `AIS Message 5 static (multi-fragment) labels the AIS target with ship name`() = runTest {
+        val r = CommsRouter(cfg)
+        r.on450(Iec450Group.NAVD, frame450("GPRMC,123519,A,3000.000,N,12200.000,E,0.0,000.0,300625,,"), now = 1_000)
+        // simcore encodeTarget = Message 5 (2 fragments, static) + Message 3 (position). Feed all → the
+        // router must reassemble the multi-fragment static, decode name/callsign, and label the target.
+        val ais = com.shipradar.sim.ais.AisTarget(
+            mmsi = 412345678, name = "EVER GIVEN", callsign = "ABCD123", shipType = 70,
+            latitude = 30.0 + 2.0 / 60.0, longitude = 122.0, sogKn = 8.0, cogDeg = 0.0,
+        )
+        com.shipradar.sim.ais.AisEncoder.encodeTarget(ais).forEach { r.on450(Iec450Group.TGTD, frame450Raw(it), now = 2_000) }
+        val t = r.targets.value.firstOrNull { it.id == "AIS-412345678" }
+        assertNotNull(t, "AIS target must be created and georeferenced")
+        assertEquals("EVER GIVEN", t.name)
+        assertEquals("ABCD123", t.callsign)
+        assertEquals(70, t.shipType)
+    }
+
+    @Test
     fun `tick schedules reconnect for a lost channel`() {
         val r = CommsRouter(cfg)
         r.onTick(12_000) // ECHO/STATUS go LOST, first reconnect scheduled ~1s later

@@ -22,6 +22,12 @@ data class TrackedTarget(
     val status: TargetStatus,
     /** Dangerous per CPA/TCPA thresholds -> drives alarm 3044 + red symbol. */
     val dangerous: Boolean = false,
+    /** AIS static/voyage label — ship name (Msg 5/24); null until static data received. */
+    val name: String? = null,
+    /** AIS radio call sign (Msg 5/24). */
+    val callsign: String? = null,
+    /** AIS ship & cargo type code 0..99 (ITU-R M.1371-5 Table 53). */
+    val shipType: Int? = null,
 )
 
 enum class TargetSource { RADAR_TT, AIS_ACTIVE, AIS_SLEEPING }

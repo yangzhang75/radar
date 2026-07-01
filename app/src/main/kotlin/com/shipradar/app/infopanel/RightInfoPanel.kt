@@ -129,6 +129,8 @@ fun RightInfoPanel(
             if (shown == null) {
                 Text("No target selected", color = OpenBridge.colors.foregroundSecondary, fontSize = 11.sp)
             } else {
+                shown.name?.let { Field("NAME", it) }        // AIS 静态船名(Msg 5/24)
+                shown.callsign?.let { Field("CALL", it) }
                 Field("BRG", deg(shown.bearingDeg) + if (shown.trueBearing) " T" else " R")
                 Field("RNG", "%.2f NM".format(shown.rangeNm))
                 Field("COG", shown.courseDeg?.let { deg(it) })

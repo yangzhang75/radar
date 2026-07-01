@@ -80,6 +80,17 @@ sealed interface ParsedSentence {
         val rotDegMin: Double? = null,
     ) : ParsedSentence
 
+    /** AIS static/voyage data (Message 5 Class A, or 24 Class B) — ship name / call sign / type. */
+    data class AisStaticReport(
+        override val talker: String,
+        override val formatter: String,
+        val mmsi: Long,
+        val name: String? = null,
+        val callsign: String? = null,
+        val shipType: Int? = null,
+        val imo: Int? = null,
+    ) : ParsedSentence
+
     /**
      * Sentence whose formatter is recognised by the registry but whose full field mapping
      * is not yet implemented (framework + TODO), OR an unknown formatter. [note] records the

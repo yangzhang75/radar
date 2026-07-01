@@ -24,6 +24,9 @@ object AisTargetBuilder {
         ownLat: Double?,
         ownLon: Double?,
         active: Boolean = true,
+        name: String? = null,
+        callsign: String? = null,
+        shipType: Int? = null,
     ): TrackedTarget? {
         val (rangeNm, bearing) = Geometry.geoToRangeBearing(ownLat, ownLon, targetLat, targetLon) ?: return null
         return TrackedTarget(
@@ -37,6 +40,9 @@ object AisTargetBuilder {
             courseDeg = cogDeg,
             speedKn = sogKn,
             status = TargetStatus.TRACKED,
+            name = name,
+            callsign = callsign,
+            shipType = shipType,
         )
     }
 }

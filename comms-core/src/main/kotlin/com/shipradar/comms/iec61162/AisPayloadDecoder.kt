@@ -116,6 +116,39 @@ internal object AisPayloadDecoder {
         val v = raw.toDouble() / 4.733
         return Math.copySign(v * v, raw.toDouble())
     }
+
+    /**
+     * Decode AIS static/voyage data — **Message 5** (Class A static & voyage) and **Message 24** (Class B
+     * static, part A = name, part B = callsign/type). Returns null for other types or a too-short stream.
+     * (ITU-R M.1371-5 §3.3 Messages 5/24.)
+     */
+    fun decodeStatic(reader: BitReader): AisStaticFields? {
+        if (reader.size < 40) return null
+        val type = reader.uint(0, 6)
+        val mmsi = reader.uint(8, 30).toLong()
+        return when (type) {
+            5 -> {
+                if (reader.size < 240) return null // through ship-type
+                AisStaticFields(
+                    messageType = 5, mmsi = mmsi,
+                    name = reader.text(112, 20), callsign = reader.text(70, 7),
+                    shipType = reader.uint(232, 8), imo = reader.uint(40, 30),
+                )
+            }
+            24 -> when (reader.uint(38, 2)) { // part number
+                0 -> { // part A — ship name only
+                    if (reader.size < 160) return null
+                    AisStaticFields(24, mmsi, name = reader.text(40, 20), callsign = null, shipType = null, imo = null)
+                }
+                1 -> { // part B — ship type + call sign
+                    if (reader.size < 132) return null
+                    AisStaticFields(24, mmsi, name = null, callsign = reader.text(90, 7), shipType = reader.uint(40, 8), imo = null)
+                }
+                else -> null
+            }
+            else -> null
+        }
+    }
 }
 
 /** Geographic fields extracted from an AIS position report (ITU-R M.1371-5 §3.3). */
@@ -148,4 +181,31 @@ internal class BitReader(private val bits: BooleanArray, val size: Int) {
         val sign = 1 shl (len - 1)
         return if (u and sign != 0) u - (1 shl len) else u
     }
+
+    /**
+     * AIS 6-bit ASCII text of [chars] characters from [start] (ITU-R M.1371-5 §3.3.5). Values 0..31 map to
+     * '@'..'_' and 32..63 to ' '..'?'; '@' (0) is the padding char, so the string is cut at the first '@'
+     * and trailing spaces trimmed. Returns null when blank.
+     */
+    fun text(start: Int, chars: Int): String? {
+        val sb = StringBuilder()
+        var i = start
+        repeat(chars) {
+            if (i + 6 > size) return@repeat
+            val v = uint(i, 6)
+            sb.append(if (v < 32) (v + 64).toChar() else v.toChar())
+            i += 6
+        }
+        return sb.toString().substringBefore('@').trim().ifBlank { null }
+    }
 }
+
+/** Static / voyage fields from AIS Message 5 or 24 (ITU-R M.1371-5 §3.3). */
+internal data class AisStaticFields(
+    val messageType: Int,
+    val mmsi: Long,
+    val name: String?,
+    val callsign: String?,
+    val shipType: Int?,
+    val imo: Int?,
+)

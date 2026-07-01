@@ -247,52 +247,61 @@ class Iec61162Parser {
         val payload = f.field(5) ?: return null
         val fillBits = Fields.parseInt(f.field(6)) ?: return null
         if (total != 1) {
-            // Multi-fragment AIS message — needs cross-sentence reassembly (stateful), done by
-            // AisReassembler in the T1.6 sync stage. TODO(待标准: ITU-R M.1371-5 §3.3).
+            // Multi-fragment AIS — a single sentence can't carry it; the caller (CommsRouter) reassembles
+            // fragments via [AisReassembler] and decodes the joined payload with [parseAisPayload].
             return ParsedSentence.Unsupported(
                 f.talker, f.formatter,
-                "multi-fragment AIS ($total fragments) — reassemble via AisReassembler (T1.6)",
+                "multi-fragment AIS ($total fragments) — reassemble then parseAisPayload",
             )
         }
-        // §7.3.4/§8.2 six-bit de-armour; a corrupt encapsulated payload (valid checksum but bad
-        // 6-bit chars / fill count) is reported distinctly rather than as "unknown formatter".
+        return parseAisPayload(f.talker, f.formatter, payload, fillBits, ownVessel)
+    }
+
+    /**
+     * Decode an already-de-fragmented AIS payload (6-bit armoured [payload] + [fillBits]) into a typed
+     * result. Public so the reassembly stage can decode a joined multi-fragment payload directly, without
+     * rebuilding an over-length single sentence (a reassembled Message 5 exceeds the §7.3.1 82-char limit).
+     * [ownVessel] = VDO (own ship) vs VDM (other vessel).
+     */
+    fun parseAisPayload(
+        talker: String,
+        formatter: String,
+        payload: String,
+        fillBits: Int,
+        ownVessel: Boolean,
+    ): ParsedSentence? {
+        // §7.3.4/§8.2 six-bit de-armour; a corrupt payload (valid checksum but bad 6-bit / fill) is flagged.
         val reader = AisPayloadDecoder.unarmor(payload, fillBits)
-            ?: return ParsedSentence.Unsupported(f.talker, f.formatter, "AIS payload de-armour failed (§7.3.4/§8.2 6-bit)")
+            ?: return ParsedSentence.Unsupported(talker, formatter, "AIS payload de-armour failed (§7.3.4/§8.2 6-bit)")
         val fields = AisPayloadDecoder.decodePositionReport(reader)
         if (fields == null) {
-            // Recognised AIS sentence, but this message type is not a decodable position report.
+            // Not a position report — try static/voyage (Message 5 / 24) so we can label targets by name.
+            if (!ownVessel) {
+                val st = AisPayloadDecoder.decodeStatic(reader)
+                if (st != null) return ParsedSentence.AisStaticReport(
+                    talker, formatter, st.mmsi, st.name, st.callsign, st.shipType, st.imo,
+                )
+            }
             val type = AisPayloadDecoder.messageType(reader)
             return ParsedSentence.Unsupported(
-                f.talker, f.formatter,
-                "AIS message type $type not decoded (only 1/2/3/18/19 position reports) — " +
-                    "TODO(待标准: ITU-R M.1371-5 §3.3 type 5/24 static; needs contract static fields)",
+                talker, formatter,
+                "AIS message type $type not decoded (position 1/2/3/18/19 + static 5/24)",
             )
         }
         return if (ownVessel) {
-            // VDO: own vessel -> OwnShipData.
-            ownShip(f, OwnShipData(
-                latitude = fields.latitude,
-                longitude = fields.longitude,
-                cogDeg = fields.cogDeg,
-                sogKn = fields.sogKn,
-                headingDeg = fields.headingDeg,
-                headingTrue = true,
-                rotDegMin = fields.rotDegMin,
+            ParsedSentence.OwnShipUpdate(talker, formatter, OwnShipData(
+                latitude = fields.latitude, longitude = fields.longitude,
+                cogDeg = fields.cogDeg, sogKn = fields.sogKn, headingDeg = fields.headingDeg,
+                headingTrue = true, rotDegMin = fields.rotDegMin,
                 sourceValidity = mapOf(SensorKind.AIS to true),
             ))
         } else {
             ParsedSentence.AisPositionReport(
-                talker = f.talker,
-                formatter = f.formatter,
-                messageType = fields.messageType,
-                mmsi = fields.mmsi,
-                navStatus = fields.navStatus,
-                latitude = fields.latitude,
-                longitude = fields.longitude,
-                cogDeg = fields.cogDeg,
-                sogKn = fields.sogKn,
-                headingDeg = fields.headingDeg,
-                rotDegMin = fields.rotDegMin,
+                talker = talker, formatter = formatter,
+                messageType = fields.messageType, mmsi = fields.mmsi, navStatus = fields.navStatus,
+                latitude = fields.latitude, longitude = fields.longitude,
+                cogDeg = fields.cogDeg, sogKn = fields.sogKn,
+                headingDeg = fields.headingDeg, rotDegMin = fields.rotDegMin,
             )
         }
     }
